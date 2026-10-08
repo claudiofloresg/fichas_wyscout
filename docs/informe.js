@@ -15,7 +15,8 @@ const DISENO_INFORME = {
   foto: { x: 56, y: 60, w: 96, h: 120 },
   datos: { x: 166, y: 70, w: 186, columnaValor: 58, renglon: 13 },
   mapa: { x: 364, y: 60, w: 232, h: 168 },   // centrado en la página (x + w/2 = 480)
-  estadisticas: { x: 616, y: 60, w: 316, yFin: 242 },
+  // tamEtiqueta / tamAbajo = tamaño del texto de la etiqueta y del número chico
+  estadisticas: { x: 616, y: 42, w: 316, yFin: 234, tamEtiqueta: 7, tamAbajo: 7 },
   // radares (imágenes, 1 a 4): se reparten a lo largo de la ficha
   radares: {
     titulo: 'RADARES DE RENDIMIENTO', yTitulo: 244, tamTitulo: 9,
@@ -211,10 +212,10 @@ const Informe = (() => {
         let yy = y0 + Math.floor(k / nc) * rh + big * 0.8;
         t(arriba, xc, yy, { font: f.bold, size: big, color: C.gold, align: 'center', maxW: cw - 4, minSize: 9 });
         yy += 7.6;
-        if (abajo != null) { t(abajo, xc, yy, { font: f.bold, size: 6.6, color: C.navy, align: 'center' }); yy += 7; }
-        renglones(g, lab, f.reg, 5.9, cw - 4).forEach((s) => {
-          t(s, xc, yy, { size: 5.9, color: C.soft, align: 'center', maxW: cw - 3, minSize: 4.6 });
-          yy += 6.4;
+        if (abajo != null) { t(abajo, xc, yy, { font: f.bold, size: Es.tamAbajo, color: C.navy, align: 'center' }); yy += Es.tamAbajo + 0.8; }
+        renglones(g, lab, f.reg, Es.tamEtiqueta, cw - 4).forEach((s) => {
+          t(s, xc, yy, { size: Es.tamEtiqueta, color: C.soft, align: 'center', maxW: cw - 3, minSize: 5 });
+          yy += Es.tamEtiqueta + 0.7;
         });
       });
     } else {

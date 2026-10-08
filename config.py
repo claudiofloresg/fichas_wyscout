@@ -21,6 +21,7 @@ CARPETA_FOTOS = r"C:\Users\Servicio Social\fichas_wyscout\datos\fotos"        # 
 CARPETA_MAPAS = r"C:\Users\Servicio Social\fichas_wyscout\datos\mapas"        # A. Bertaccini.png
 CARPETA_RADARES = r"C:\Users\Servicio Social\fichas_wyscout\datos\radar"      # A. Bertaccini/promedio.png, jugador.png, <vs>.png
 CARPETA_NOMBRES = r"C:\Users\Servicio Social\fichas_wyscout\datos\nombres"    # nombres.xlsx:  NOMBRE EXCEL | NOMBRE COMPLETO
+CARPETA_EXTRA = r"C:\Users\Servicio Social\fichas_wyscout\datos\stats_manuales"
 
 # Hoja y fila del encabezado del Excel de Wyscout (fila 1 => 0)
 HOJA_EXCEL = 0
@@ -111,11 +112,12 @@ MINUTOS = ("Minutos Jugados", ("Minutes played", _E), ("Matches played", _E))
 GOLES = ("Goles", ("Goals", _E), None)
 XG = ("xG", ("xG", _D), ("xG per 90", _D))
 XA = ("xA", ("xA", _D), ("xA per 90", _D))
+RECUP_RIVAL = ("Balones Recuperados Cancha Rival", ("Recuperaciones campo rival %", _P), ("Recuperaciones campo rival per 90", _D))
 ASISTENCIAS = ("Asistencias", ("Assists", _E), ("Assists per 90", _D))
 GOLES_CABEZA = ("Goles de Cabeza", ("Head goals", _E), ("Head goals per 90", _D))
-REGATES = _ganadas("Successful dribbles, %", "Dribbles per 90", "Regates Exitosos")
-DUELOS_OF = _ganadas("Offensive duels won, %", "Offensive duels per 90", "Duelos Ofensivos Ganados")
-DUELOS_DEF = _ganadas("Defensive duels won, %", "Defensive duels per 90", "Duelos Defensivos Ganados")
+REGATES = _ganadas("Successful dribbles, %", "Dribbles per 90", "Regates")
+DUELOS_OF = _ganadas("Offensive duels won, %", "Offensive duels per 90", "Duelos Ofensivos")
+DUELOS_DEF = _ganadas("Defensive duels won, %", "Defensive duels per 90", "Duelos Defensivos")
 DUELOS_AER = _ganadas("Aerial duels won, %", "Aerial duels per 90", "Duelos Aéreos Ganados")
 DUELOS = _ganadas("Duels won, %", "Duels per 90", "Duelos Ganados")
 CENTROS = _ganadas("Accurate crosses, %", "Crosses per 90", "Centros Precisos")
@@ -126,7 +128,7 @@ PASES_LARGOS = _ganadas("Accurate long passes, %", "Long passes per 90", "Pases 
 PASES_CORTOS = _ganadas("Accurate short / medium passes, %", "Short / medium passes per 90", "Pases Corto/Medio Precisos")
 PASES_PROG = _ganadas("Accurate progressive passes, %", "Progressive passes per 90", "Pases Progresivos Precisos")
 PASES_AREA = _ganadas("Accurate passes to penalty area, %", "Passes to penalty area per 90", "Pases al Área Precisos")
-PASES_ULT_TERCIO = _ganadas("Accurate passes to final third, %", "Passes to final third per 90", "Pases Últ. Tercio Precisos")
+PASES_ULT_TERCIO = _ganadas("Accurate passes to final third, %", "Passes to final third per 90", "Pases Últ. Tercio")
 PASES_ESPACIO = _ganadas("Accurate through passes, %", "Through passes per 90", "Pases al Espacio Precisos")
 TIROS = _ganadas("Shots on target, %", "Shots per 90", "Tiros a Portería")
 CARRERAS_PROG = _total("Progressive runs per 90", "Carreras Progresivas")
@@ -164,31 +166,26 @@ ESTADISTICAS = {
         MINUTOS, GOLES_CABEZA, DUELOS, PASES_RECIBIDOS,
         FALTAS_RECIBIDAS, PASES_ULT_TERCIO, PASES_LARGOS, PASES,
         PASES_ADELANTE, PASES_PROG, ACC_DEFENSIVAS, DUELOS_DEF,
-        DUELOS_AER, INTERCEPCIONES, ENTRADAS, TIROS_BLOQ,
     ],
     "Lateral": [
         MINUTOS, CENTROS, CARRERAS_PROG, DUELOS_OF,
         ACC_OFENSIVAS, PASES_LARGOS_REC, XA, PASES_PROG,
         PASES_ULT_TERCIO, ASIST_TIRO, CENTROS_20M, ACC_DEFENSIVAS,
-        DUELOS_DEF, DUELOS_AER, INTERCEPCIONES, ENTRADAS,
     ],
     "Mediocampista": [
         MINUTOS, DUELOS_OF, CARRERAS_PROG, FALTAS_RECIBIDAS,
         PASES_AREA, PASES_RECIBIDOS, PASES_LARGOS, XA,
         ASISTENCIAS, PASES_PROG, PASES_ESPACIO, ACC_DEFENSIVAS,
-        DUELOS_DEF, DUELOS_AER, INTERCEPCIONES, ENTRADAS,
     ],
     "Extremo": [
         MINUTOS, XG, REGATES, CARRERAS_PROG,
         ASISTENCIAS, PASES_LARGOS_REC, XA, CENTROS,
         PASES_ADELANTE, PASES_ATRAS, DUELOS_OF, ACC_DEFENSIVAS,
-        DUELOS_DEF, DUELOS_AER, INTERCEPCIONES, ENTRADAS,
     ],
     "Delantero": [
-        MINUTOS, GOLES, XG, REGATES,
-        DUELOS_OF, PASES_LARGOS_REC, XA, ASISTENCIAS,
-        PASES_AREA, CARRERAS_PROG, PASES_PROG, ACC_DEFENSIVAS,
-        DUELOS_DEF, DUELOS_AER, INTERCEPCIONES, ENTRADAS,
+        MINUTOS, GOLES, XG, ASISTENCIAS,
+        TIROS, DUELOS_AER, DUELOS_OF, PASES_ULT_TERCIO,
+        REGATES, DUELOS_DEF, FALTAS_RECIBIDAS, RECUP_RIVAL,
     ],
 }
 

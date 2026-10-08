@@ -258,6 +258,44 @@ def cargar_nombres():
     return out
 
 
+# ============================================================================= datos extra
+def cargar_extra():
+    """Excel(es) de CARPETA_EXTRA: 1a columna = nombre tal cual el Excel de Wyscout,
+    las demás = datos que se pegan a ese jugador (se usan en config.py como cualquier columna).
+    Devuelve {columna: {slug(nombre): (nombre, valor)}}."""
+    out = {}
+    for path in leer_carpeta(cfg("CARPETA_EXTRA", "datos/stats_manuales"), (".xlsx", ".xlsm", ".xls", ".csv")):
+        hojas = {"csv": pd.read_csv(path, dtype=object)} if path.lower().endswith(".csv") \
+            else pd.read_excel(path, sheet_name=None, dtype=object)
+        for hoja, df in hojas.items():
+            if df.shape[1] < 2:
+                continue
+            df.columns = [re.sub(r"\s+", " ", str(c)).strip() for c in df.columns]
+            clave = df.columns[0]
+            n = 0
+            for _, r in df.iterrows():
+                if es_vacio(r[clave]):
+                    continue
+                n += 1
+                for c in df.columns[1:]:
+                    if not es_vacio(r[c]):
+                        out.setdefault(c, {})[slug(r[clave])] = (str(r[clave]).strip(), r[c])
+            print(f"  Datos extra: {os.path.basename(path)} / {hoja}: {n} jugadores, columnas: {', '.join(df.columns[1:])}")
+    return out
+
+
+def pegar_extra(df, extra):
+    """Agrega las columnas extra al Excel de la posición (por nombre del jugador)."""
+    if not extra:
+        return df
+    df = df.copy()
+    k = df[C.COL_JUGADOR].map(slug)
+    for col, vals in extra.items():
+        nuevos = k.map({s: v for s, (_, v) in vals.items()})
+        df[col] = nuevos.combine_first(df[col]) if col in df.columns else nuevos
+    return df
+
+
 # ============================================================================= formatos
 def traducir_pais(p, rep):
     p = str(p).strip()
@@ -383,11 +421,12 @@ def main():
     idx_mapas = indexar_imagenes(C.CARPETA_MAPAS)
     idx_radares = indexar_radares(C.CARPETA_RADARES)
     nombres = cargar_nombres()
+    extra = cargar_extra()
     print(f"Fotos: {len(idx_fotos)}   Mapas: {len(idx_mapas)}   Carpetas de radares: {len(idx_radares)}   "
           f"Nombres completos: {len(nombres)}")
 
     rep = {k: [] for k in ("sin_posicion", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar", "radar_extra",
-                           "paises", "columnas", "repetidos")}
+                           "paises", "columnas", "repetidos", "extra_sin_jugador")}
     usados = set()
     orden_pos = [p for _, p in cfg("POSICIONES", [])]
     posiciones = {}
@@ -402,6 +441,7 @@ def main():
         df = leer_excel(path)
         if df is None:
             continue
+        df = pegar_extra(df, extra)
         if posicion not in cfg("ESTADISTICAS", {}):
             print(f"  [aviso] '{posicion}' no tiene catálogo en ESTADISTICAS; su cuadro sale vacío")
         col_eq = C.COL_EQUIPO if C.COL_EQUIPO in df.columns else df.columns[1]
@@ -491,6 +531,11 @@ def main():
             rep["columnas"].append(f"[{os.path.basename(path)}] {c}")
             print(f"  [aviso] columna que no viene en el Excel: {c}")
 
+    todos = {slug(j["nombreExcel"]) for p in posiciones.values() for j in p["jugadores"]}
+    for col, vals in extra.items():
+        for k, (nombre, _) in vals.items():
+            if k not in todos:
+                rep["extra_sin_jugador"].append(nombre)
     lista = sorted(posiciones.values(), key=lambda p: (orden_pos.index(p["label"]) if p["label"] in orden_pos else 99, p["label"]))
     for p in lista:
         p["jugadores"].sort(key=lambda j: slug(j["nombre"]))
@@ -528,6 +573,7 @@ def main():
         "sin_mapa": "Sin mapa de calor",
         "sin_radar": "Radares faltantes",
         "radar_extra": "Carpetas con más radares del máximo (MAX_RADARES)",
+        "extra_sin_jugador": "Nombres en los Excel de datos extra que no están en ningún Excel de posición",
     }
     with open(REPORTE, "w", encoding="utf-8") as f:
         f.write(f"Reporte de actualización — {payload['generado']}\n")
