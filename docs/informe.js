@@ -12,17 +12,26 @@ const DISENO_INFORME = {
   },
 
   credito: { texto: 'Inteligencia Deportiva Pumas', x: 932, y: 26 },   // esquina sup. derecha, sobre la línea azul
-  foto: { x: 56, y: 60, w: 96, h: 120 },
+  foto: { x: 56, y: 50, w: 96, h: 120 },
   datos: { x: 166, y: 70, w: 186, columnaValor: 58, renglon: 13 },
   mapa: { x: 364, y: 60, w: 232, h: 168 },   // centrado en la página (x + w/2 = 480)
   // tamEtiqueta / tamAbajo = tamaño del texto de la etiqueta y del número chico
-  estadisticas: { x: 616, y: 42, w: 316, yFin: 234, tamEtiqueta: 7, tamAbajo: 7 },
+  // sin título; y = arriba de la tabla. espacio = distancia número grande -> chico -> etiqueta;
+  // interlineado = entre renglones de la etiqueta
+  estadisticas: { x: 616, y: 40, w: 316, yFin: 236, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
   // radares (imágenes, 1 a 4): se reparten a lo largo de la ficha
   radares: {
     titulo: 'RADARES DE RENDIMIENTO', yTitulo: 244, tamTitulo: 9,
     y: 258, yFin: 490,            // alto disponible para las imágenes
     x0: 40, x1: 920,              // ancho disponible
     sep: 6,                       // separación mínima entre radares
+  },
+  // portada (primera hoja de cada jugador)
+  portada: {
+    logo: 'assets/logo.png', logoAlto: 118, yLogo: 128,
+    yNombre: 330, tamNombre: 40, espaciado: 0.32,       // espaciado entre letras (fracción del tamaño)
+    texto: 'Inteligencia Deportiva', yTexto: 410,
+    marco: { x: 150, y: 150, w: 660, h: 290, hueco: 150 },   // líneas doradas; hueco = espacio para el logo
   },
   yPie: 515,            // pie de página (debajo de la línea azul): Fuente / Datos al (2 renglones)
   fuente: 'HUDL Wyscout',
@@ -199,23 +208,24 @@ const Informe = (() => {
 
     // ---------- estadísticas (sin recuadro): arriba número grande, abajo número chico, etiqueta
     const Es = D.estadisticas;
-    t('ESTADÍSTICAS', Es.x + Es.w / 2, Es.y + 7, { font: f.bold, size: 7.5, color: C.navy, align: 'center' });
     const datos = jug.stats || [];
     if (datos.length) {
       const nc = datos.length <= 16 ? 4 : 5, cw = Es.w / nc;
       const nf = Math.ceil(datos.length / nc);
-      const y0 = Es.y + 18;
+      const y0 = Es.y;
       const rh = (Es.yFin - y0) / nf;
       const big = Math.min(19, rh * 0.4);
       datos.forEach(([lab, arriba, abajo], k) => {
         const xc = Es.x + cw * (k % nc) + cw / 2;
-        let yy = y0 + Math.floor(k / nc) * rh + big * 0.8;
+        let yy = y0 + Math.floor(k / nc) * rh + big * 0.85;
         t(arriba, xc, yy, { font: f.bold, size: big, color: C.gold, align: 'center', maxW: cw - 4, minSize: 9 });
-        yy += 7.6;
-        if (abajo != null) { t(abajo, xc, yy, { font: f.bold, size: Es.tamAbajo, color: C.navy, align: 'center' }); yy += Es.tamAbajo + 0.8; }
+        yy += Es.espacio;
+        // el renglón del número chico se reserva siempre: así todas las etiquetas quedan alineadas
+        if (abajo != null) t(abajo, xc, yy, { font: f.bold, size: Es.tamAbajo, color: C.navy, align: 'center' });
+        yy += Es.espacio;
         renglones(g, lab, f.reg, Es.tamEtiqueta, cw - 4).forEach((s) => {
           t(s, xc, yy, { size: Es.tamEtiqueta, color: C.soft, align: 'center', maxW: cw - 3, minSize: 5 });
-          yy += Es.tamEtiqueta + 0.7;
+          yy += Es.interlineado;
         });
       });
     } else {
@@ -242,9 +252,50 @@ const Informe = (() => {
     t(`Datos al ${meta.generado.split(' ')[0]}`, 38, D.yPie + 8, { size: 6.4, color: C.faint, maxW: 300 });
   }
 
-  async function generar(jugadores, meta) {
+  // ------------------------------------------------------------------ portada
+  async function portada(ctx, jug) {
+    const page = ctx.doc.addPage([P.w, P.h]);
+    const g = mk(page, ctx);
+    const { f } = ctx;
+    const Po = D.portada;
+    const Y = (y) => P.h - y;
+    if (ctx.fondo) page.drawImage(ctx.fondo, { x: 0, y: 0, width: P.w, height: P.h });
+
+    // marco dorado tipo "corchetes": arriba con hueco para el logo, abajo abierto al centro
+    const Mc = Po.marco, oro = C.gold, th = 1.1;
+    const ln = (x1, y1, x2, y2) => page.drawLine({ start: { x: x1, y: Y(y1) }, end: { x: x2, y: Y(y2) }, thickness: th, color: oro });
+    const cx = P.w / 2, x0 = Mc.x, x1 = Mc.x + Mc.w, y0 = Mc.y, y1 = Mc.y + Mc.h;
+    ln(x0, y0, cx - Mc.hueco, y0); ln(cx + Mc.hueco, y0, x1, y0);           // arriba
+    ln(x0, y0, x0, y1); ln(x1, y0, x1, y1);                                 // lados
+    ln(x0, y1, x0 + Mc.w * 0.2, y1); ln(x1 - Mc.w * 0.2, y1, x1, y1);       // abajo (solo esquinas)
+
+    // logo
+    const logo = await img(ctx, Po.logo);
+    if (logo) {
+      const h = Po.logoAlto, w = logo.width * h / logo.height;
+      page.drawImage(logo, { x: cx - w / 2, y: Y(Po.yLogo + h), width: w, height: h });
+    }
+
+    // nombre con letras espaciadas (se achica si no cabe)
+    const nombre = limpio(f.bold, jug.nombre || '');
+    let size = Po.tamNombre;
+    const anchoNombre = (s) => [...nombre].reduce((a, ch) => a + f.bold.widthOfTextAtSize(ch, s), 0)
+      + Po.espaciado * s * (nombre.length - 1);
+    while (size > 16 && anchoNombre(size) > Mc.w - 40) size -= 1;
+    let x = cx - anchoNombre(size) / 2;
+    for (const ch of nombre) {
+      page.drawText(ch, { x, y: Y(Po.yNombre), size, font: f.bold, color: C.navy });
+      x += f.bold.widthOfTextAtSize(ch, size) + Po.espaciado * size;
+    }
+    g.t(Po.texto, cx, Po.yTexto, { font: f.bold, size: 10, color: C.navy, align: 'center' });
+  }
+
+  async function generar(jugadores, meta, conPortada = true) {
     const ctx = await nuevoDoc();
-    for (const j of jugadores) await pagina(ctx, j, meta);
+    for (const j of jugadores) {
+      if (conPortada) await portada(ctx, j);
+      await pagina(ctx, j, meta);
+    }
     return ctx.doc.save();
   }
 

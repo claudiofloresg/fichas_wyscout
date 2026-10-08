@@ -15,7 +15,10 @@
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const nombreArchivo = (s) => norm(s).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
   const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; };
-  const generar = (js) => Informe.generar(js, D);
+  const chkPortada = $('chkPortada');
+  const generar = (js, prev) => Informe.generar(js, D, prev ? false : chkPortada.checked);
+  try { const v = localStorage.getItem('portada'); if (v !== null) chkPortada.checked = v === '1'; } catch (e) { /* sin storage */ }
+  chkPortada.addEventListener('change', () => { try { localStorage.setItem('portada', chkPortada.checked ? '1' : '0'); } catch (e) { /* sin storage */ } });
 
   let pos = null, actual = null, urlPrev = null, ocupado = false;
 
@@ -64,7 +67,7 @@
     history.replaceState(null, '', u);
     status.textContent = 'Generando vista previa…';
     try {
-      const bytes = await generar([j]);
+      const bytes = await generar([j], true);
       if (actual !== j) return;
       if (urlPrev) URL.revokeObjectURL(urlPrev);
       urlPrev = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));

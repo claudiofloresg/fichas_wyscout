@@ -264,7 +264,7 @@ def cargar_extra():
     las demás = datos que se pegan a ese jugador (se usan en config.py como cualquier columna).
     Devuelve {columna: {slug(nombre): (nombre, valor)}}."""
     out = {}
-    for path in leer_carpeta(cfg("CARPETA_EXTRA", "datos/stats_manuales"), (".xlsx", ".xlsm", ".xls", ".csv")):
+    for path in leer_carpeta(cfg("CARPETA_EXTRA", "datos/extra"), (".xlsx", ".xlsm", ".xls", ".csv")):
         hojas = {"csv": pd.read_csv(path, dtype=object)} if path.lower().endswith(".csv") \
             else pd.read_excel(path, sheet_name=None, dtype=object)
         for hoja, df in hojas.items():
@@ -483,9 +483,10 @@ def main():
 
             radares = []
             rr = buscar(idx_radares, *claves) or {}
+            # orden en la ficha: jugador, promedio (siempre 2o), vs...
             fuentes = ([("jugador", rr["jugador"])] if rr.get("jugador") else []) \
-                + [(f"vs{k + 1}", s) for k, s in enumerate(rr.get("vs", []))] \
-                + ([("promedio", rr["promedio"])] if rr.get("promedio") else [])
+                + ([("promedio", rr["promedio"])] if rr.get("promedio") else []) \
+                + [(f"vs{k + 1}", s) for k, s in enumerate(rr.get("vs", []))]
             if not rr:
                 rep["sin_radar"].append(f"{nom_x}: no hay carpeta de radares")
             else:
