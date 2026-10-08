@@ -1,6 +1,14 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
+echo == 0/2 Bajando la ultima version de GitHub ==
+git pull --rebase --autostash
+if errorlevel 1 (
+  echo.
+  echo No se pudo bajar la ultima version. Revisa el mensaje de arriba.
+  pause
+  exit /b 1
+)
 echo == 1/2 Generando datos de la pagina ==
 python build.py
 if errorlevel 1 (

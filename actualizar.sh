@@ -2,6 +2,8 @@
 # Genera los datos y publica en GitHub Pages.   Uso: ./actualizar.sh
 set -e
 cd "$(dirname "$0")"
+echo "== 0/2 Bajando la última versión de GitHub =="
+git pull --rebase --autostash
 echo "== 1/2 Generando datos de la página =="
 python3 build.py
 echo ""

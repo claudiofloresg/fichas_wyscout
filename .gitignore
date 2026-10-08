@@ -8,3 +8,4 @@ __pycache__/
 *.pyc
 .env
 reporte_build.txt
+config_local.py
