@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Fichas Scouting — Pumas UNAM</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
+<style>
+  :root{
+    --paper:#F3F4F2; --card:#FFFFFF; --ink:#12181E; --ink-soft:#4B5560; --ink-faint:#8B93A0;
+    --navy:#0C2A4E; --navy-soft:#294C74; --gold:#B9902E; --gold-soft:#F3EBD3;
+    --line:#DADDD6; --hover:#EEF1F5;
+    --fnt:'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--fnt);-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;}
+  header{background:var(--navy);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 20px;border-bottom:3px solid var(--gold);flex-wrap:wrap;}
+  header img{height:40px;width:auto;background:#fff;border-radius:6px;padding:3px;}
+  header h1{font-size:18px;margin:0;letter-spacing:.02em;text-transform:uppercase;font-weight:700;}
+  header .sub{font-size:11px;color:#C9D2DE;letter-spacing:.12em;text-transform:uppercase;}
+  header .meta{margin-left:auto;font-size:11px;color:#C9D2DE;text-align:right;}
+  main{flex:1;display:grid;grid-template-columns:360px 1fr;min-height:0;}
+  aside{background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;}
+  .filters{padding:16px;display:grid;gap:10px;border-bottom:1px solid var(--line);}
+  label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);display:block;margin-bottom:4px;}
+  select,input[type=search]{width:100%;font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);}
+  select:focus,input:focus{outline:2px solid var(--gold);outline-offset:0;border-color:var(--gold);}
+  .count{font-size:11px;color:var(--ink-faint);padding:8px 16px;border-bottom:1px solid var(--line);}
+  ul#lista{list-style:none;margin:0;padding:0;overflow:auto;flex:1;}
+  ul#lista li{padding:9px 16px;border-bottom:1px solid #EFF0ED;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:2px 8px;}
+  ul#lista li:hover{background:var(--hover);}
+  ul#lista li.sel{background:var(--gold-soft);box-shadow:inset 3px 0 0 var(--gold);}
+  li .n{font-weight:700;font-size:14px;}
+  li .m{font-size:11px;color:var(--ink-soft);font-variant-numeric:tabular-nums;text-align:right;}
+  li .e{font-size:11px;color:var(--ink-faint);grid-column:1 / -1;}
+  li .tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9px;font-size:10px;font-weight:700;letter-spacing:.02em;}
+  ul#lista li.grupo{display:block;cursor:default;background:var(--paper);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);padding:8px 16px;}
+  ul#lista li.grupo:hover{background:var(--paper);}
+  section.visor{display:flex;flex-direction:column;min-height:0;padding:16px 20px;gap:12px;}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .toolbar h2{font-size:20px;margin:0;color:var(--navy);text-transform:uppercase;}
+  .toolbar .pos{font-size:12px;color:var(--ink-soft);}
+  .toolbar .sp{flex:1;}
+  button{font:inherit;font-size:13px;font-weight:700;padding:10px 16px;border-radius:6px;border:1px solid var(--navy);background:#fff;color:var(--navy);cursor:pointer;}
+  button.primary{background:var(--navy);color:#fff;}
+  button:hover:not(:disabled){filter:brightness(1.12);}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  .frame{flex:1;min-height:420px;background:#E4E6E2;border:1px solid var(--line);border-radius:8px;overflow:hidden;position:relative;}
+  .frame iframe{width:100%;height:100%;border:0;display:block;}
+  .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:14px;text-align:center;padding:24px;}
+  .status{font-size:12px;color:var(--ink-soft);min-height:16px;}
+  @media (max-width:860px){
+    main{grid-template-columns:1fr;}
+    aside{border-right:0;border-bottom:1px solid var(--line);}
+    ul#lista{max-height:45vh;flex:none;}
+    .frame{min-height:70vh;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <img src="assets/logo.png" alt="Pumas UNAM">
+  <div>
+    <h1>Fichas de Jugadores · Scouting</h1>
+    <div class="sub">Inteligencia Deportiva Pumas</div>
+  </div>
+  <div class="meta" id="meta"></div>
+</header>
+
+<main>
+  <aside>
+    <div class="filters">
+      <div><label for="selPos">Posición</label><select id="selPos"></select></div>
+      <div>
+        <label for="txtBuscar">Buscar jugador</label>
+        <input type="search" id="txtBuscar" placeholder="Nombre o equipo…" autocomplete="off">
+      </div>
+    </div>
+    <div class="count" id="count"></div>
+    <ul id="lista"></ul>
+  </aside>
+
+  <section class="visor">
+    <div class="toolbar">
+      <div>
+        <h2 id="titulo">Selecciona un jugador</h2>
+        <div class="pos" id="subtitulo"></div>
+      </div>
+      <div class="sp"></div>
+      <button class="primary" id="btnPdf" disabled>⬇ Descargar PDF</button>
+      <button id="btnEquipo" disabled>⬇ PDF de todos</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="frame">
+      <iframe id="preview" title="Vista previa de la ficha"></iframe>
+      <div class="empty" id="empty">Elige un jugador de la lista para ver su ficha.</div>
+    </div>
+  </section>
+</main>
+
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="data/fichas.js?v=20261008113152"></script>
+<script src="informe.js?v=20261008113152"></script>
+<script src="app.js?v=20261008113152"></script>
+</body>
+</html>
