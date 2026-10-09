@@ -17,12 +17,12 @@ const DISENO_INFORME = {
   datos: { x: 166, y: 74, w: 196, columnaValor: 74, renglon: 15.5, tamEquipo: 12, tamNombre: 20, tamEtiqueta: 8.2, tamValor: 9.6 },
   mapa: { x: 384, y: 60, w: 192, h: 138 },   // centrado en la página (x + w/2 = 480)
   // botón de video (debajo del mapa): solo sale si el jugador tiene link en nombres.xlsx (columna VIDEO)
-  video: { texto: 'VER VIDEO', y: 214 },   // colores de la ficha: contorno e ícono dorados, texto azul marino
+  video: { texto: 'VER VIDEO', lugar: 'foto', y: 214, debajoFoto: 16 },   // lugar: 'foto' (debajo de la foto) o 'mapa' (debajo del mapa, a la altura y)
   // tamEtiqueta / tamAbajo = tamaño del texto de la etiqueta y del número chico
   // sin título; y = arriba de la tabla. espacio = distancia número grande -> chico -> etiqueta;
   // interlineado = entre renglones de la etiqueta
   // la tabla se centra en vertical entre y y yFin
-  estadisticas: { x: 616, y: 46, w: 316, yFin: 236, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
+  estadisticas: { x: 616, y: 36, w: 316, yFin: 236, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
   // radares (imágenes, 1 a 4): se reparten a lo largo de la ficha
   radares: {
     titulo: 'RADARES DE RENDIMIENTO', yTitulo: 244, tamTitulo: 9,
@@ -176,6 +176,26 @@ const Informe = (() => {
     const { f } = ctx;
     if (ctx.fondo) page.drawImage(ctx.fondo, { x: 0, y: 0, width: P.w, height: P.h });
 
+    // ---------- botón de video (link clicable en el PDF), centrado en (cxv, yv)
+    const botonVideo = (cxv, yv) => {
+      const V = { ...D.video, y: yv };
+      const ts = 8, tw = g.ancho(V.texto, f.bold, ts);
+      const ic = 13, gap = 6, bw = ic + gap + tw + 16, bh = 19;
+      const bx = cxv - bw / 2, by = V.y - bh / 2;
+      g.path(`M${f2(bx + 4)},${f2(by)} H${f2(bx + bw - 4)} Q${f2(bx + bw)},${f2(by)} ${f2(bx + bw)},${f2(by + 4)} V${f2(by + bh - 4)} Q${f2(bx + bw)},${f2(by + bh)} ${f2(bx + bw - 4)},${f2(by + bh)} H${f2(bx + 4)} Q${f2(bx)},${f2(by + bh)} ${f2(bx)},${f2(by + bh - 4)} V${f2(by + 4)} Q${f2(bx)},${f2(by)} ${f2(bx + 4)},${f2(by)} Z`, { border: C.gold, bw: 1.1 });
+      // ícono "play": círculo dorado con triángulo blanco
+      const icx = bx + 8 + ic / 2, icy = V.y;
+      g.circ(icx, icy, ic / 2, { color: C.gold });
+      g.path(`M${f2(icx - 2.2)},${f2(icy - 3.4)} L${f2(icx + 3.6)},${f2(icy)} L${f2(icx - 2.2)},${f2(icy + 3.4)} Z`, { color: rgb(1, 1, 1) });
+      t(V.texto, icx + ic / 2 + gap, V.y + ts * 0.36, { font: f.bold, size: ts, color: C.navy });
+      // zona clicable
+      const annot = ctx.doc.context.obj({
+        Type: 'Annot', Subtype: 'Link', Rect: [bx, P.h - (by + bh), bx + bw, P.h - by], Border: [0, 0, 0],
+        A: { Type: 'Action', S: 'URI', URI: PDFString.of(jug.video) },
+      });
+      page.node.addAnnot(ctx.doc.context.register(annot));
+    };
+
     // ---------- crédito (arriba a la derecha)
     t(D.credito.texto, D.credito.x, D.credito.y, { font: f.bold, size: 7.5, color: C.navy, align: 'right' });
 
@@ -204,6 +224,7 @@ const Informe = (() => {
     const foto = await img(ctx, jug.foto);
     if (foto) g.imagen(foto, F.x, fy, F.w, F.h, { abajo: true, blend: BlendMode.Multiply });
     else silueta(g, F.x, fy, F.w, F.h);
+    if (jug.video && D.video.lugar === 'foto') botonVideo(F.x + F.w / 2, fy + F.h + D.video.debajoFoto);
 
     // ---------- mapa de calor
     const M = D.mapa;
@@ -213,25 +234,7 @@ const Informe = (() => {
     if (mapa) g.imagen(mapa, M.x, my, M.w, mh);
     else t('Sin mapa de calor', M.x + M.w / 2, my + mh / 2, { font: f.ital, size: 8.5, color: C.faint, align: 'center' });
 
-    // ---------- botón de video (link clicable en el PDF)
-    if (jug.video) {
-      const V = D.video, cxv = M.x + M.w / 2;
-      const ts = 8, tw = g.ancho(V.texto, f.bold, ts);
-      const ic = 13, gap = 6, bw = ic + gap + tw + 16, bh = 19;
-      const bx = cxv - bw / 2, by = V.y - bh / 2;
-      g.path(`M${f2(bx + 4)},${f2(by)} H${f2(bx + bw - 4)} Q${f2(bx + bw)},${f2(by)} ${f2(bx + bw)},${f2(by + 4)} V${f2(by + bh - 4)} Q${f2(bx + bw)},${f2(by + bh)} ${f2(bx + bw - 4)},${f2(by + bh)} H${f2(bx + 4)} Q${f2(bx)},${f2(by + bh)} ${f2(bx)},${f2(by + bh - 4)} V${f2(by + 4)} Q${f2(bx)},${f2(by)} ${f2(bx + 4)},${f2(by)} Z`, { border: C.gold, bw: 1.1 });
-      // ícono "play": círculo dorado con triángulo blanco
-      const icx = bx + 8 + ic / 2, icy = V.y;
-      g.circ(icx, icy, ic / 2, { color: C.gold });
-      g.path(`M${f2(icx - 2.2)},${f2(icy - 3.4)} L${f2(icx + 3.6)},${f2(icy)} L${f2(icx - 2.2)},${f2(icy + 3.4)} Z`, { color: rgb(1, 1, 1) });
-      t(V.texto, icx + ic / 2 + gap, V.y + ts * 0.36, { font: f.bold, size: ts, color: C.navy });
-      // zona clicable
-      const annot = ctx.doc.context.obj({
-        Type: 'Annot', Subtype: 'Link', Rect: [bx, P.h - (by + bh), bx + bw, P.h - by], Border: [0, 0, 0],
-        A: { Type: 'Action', S: 'URI', URI: PDFString.of(jug.video) },
-      });
-      page.node.addAnnot(ctx.doc.context.register(annot));
-    }
+    if (jug.video && D.video.lugar !== 'foto') botonVideo(M.x + M.w / 2, D.video.y);
 
     // ---------- estadísticas (sin recuadro): arriba número grande, abajo número chico, etiqueta
     const Es = D.estadisticas;
