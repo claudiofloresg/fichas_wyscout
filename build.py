@@ -384,29 +384,12 @@ def leer_excel(path):
 
 def stats_de(df, i, posicion, faltan):
     """[[etiqueta, arriba, abajo], ...] ya con formato (texto)."""
-    minutos = to_number(df.at[i, C.COL_MINUTOS]) if C.COL_MINUTOS in df.columns else np.nan
-
     def valor(col):
-        if col.startswith("total:"):
-            base = col[6:].strip()
-            if base not in df.columns:
-                faltan.add(base)
-                return None
-            v = to_number(df.at[i, base])
-            return None if math.isnan(v) or math.isnan(minutos) else v * minutos / 90
         if col not in df.columns:
             faltan.add(col)
             return None
         v = to_number(df.at[i, col])
         return None if math.isnan(v) else v
-
-    out = []
-    for etiqueta, arriba, abajo in cfg("ESTADISTICAS", {}).get(posicion, []):
-        a = fmt_num(valor(arriba[0]), arriba[1]) if arriba else "–"
-        b = fmt_num(valor(abajo[0]), abajo[1]) if abajo else None
-        out.append([etiqueta, a, b])
-    return out
-
 
 # ============================================================================= main
 def main():

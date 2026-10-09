@@ -102,8 +102,8 @@ TRADUCCION_PAISES = {
 # al final. Para quitar/poner/reordenar una stat solo mueve la línea.
 _E, _P, _D = "entero", "pct", "dec"
 
-def _total(col90, etiqueta):           # TOTAL arriba, por 90 abajo
-    return (etiqueta, (f"total:{col90}", _E), (col90, _D))
+def _total(col90, etiqueta):           # solo el per 90 que viene en el Excel, arriba
+    return (etiqueta, (col90, _D), None)
 
 def _ganadas(col_pct, col90, etiqueta):  # % arriba, intentos por 90 abajo
     return (etiqueta, (col_pct, _P), (col90, _D))
