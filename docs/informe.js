@@ -13,8 +13,11 @@ const DISENO_INFORME = {
 
   credito: { texto: 'Inteligencia Deportiva Pumas', x: 932, y: 24.5 },   // esquina sup. derecha, centrado arriba de la línea azul
   foto: { x: 52, w: 96, h: 120 },                 // se centra en vertical con el bloque de nombre + datos
-  datos: { x: 166, y: 70, w: 186, columnaValor: 58, renglon: 13, tamEquipo: 11 },
-  mapa: { x: 364, y: 60, w: 232, h: 168 },   // centrado en la página (x + w/2 = 480)
+  // tamNombre = nombre del jugador; tamEtiqueta / tamValor = 'Posición' / 'Delantero'
+  datos: { x: 166, y: 74, w: 196, columnaValor: 74, renglon: 15.5, tamEquipo: 12, tamNombre: 20, tamEtiqueta: 8.2, tamValor: 9.6 },
+  mapa: { x: 384, y: 60, w: 192, h: 138 },   // centrado en la página (x + w/2 = 480)
+  // botón de video (debajo del mapa): solo sale si el jugador tiene link en nombres.xlsx (columna VIDEO)
+  video: { texto: 'VER VIDEO', y: 214 },   // colores de la ficha: contorno e ícono dorados, texto azul marino
   // tamEtiqueta / tamAbajo = tamaño del texto de la etiqueta y del número chico
   // sin título; y = arriba de la tabla. espacio = distancia número grande -> chico -> etiqueta;
   // interlineado = entre renglones de la etiqueta
@@ -39,7 +42,7 @@ const DISENO_INFORME = {
 };
 
 const Informe = (() => {
-  const { rgb, StandardFonts, PDFDocument, BlendMode } = PDFLib;
+  const { rgb, StandardFonts, PDFDocument, BlendMode, PDFName, PDFString } = PDFLib;
   const D = DISENO_INFORME;
   const P = D.pagina;
 
@@ -125,7 +128,7 @@ const Informe = (() => {
       page.drawText(s, { x: xx, y: Y(y), size, font, color: o.color || C.ink, opacity: o.opacity });
       return w;
     };
-    const path = (d, o = {}) => page.drawSvgPath(d, { x: 0, y: P.h, color: o.color });
+    const path = (d, o = {}) => page.drawSvgPath(d, { x: 0, y: P.h, color: o.color, borderColor: o.border, borderWidth: o.border ? (o.bw || 1) : 0 });
     const circ = (cx, cy, rr, o = {}) => page.drawCircle({ x: cx, y: Y(cy), size: rr, color: o.color });
     // imagen centrada dentro de una caja (sin deformar)
     const imagen = (im, x, y, w, h, o = {}) => {
@@ -179,7 +182,7 @@ const Informe = (() => {
     // ---------- nombre, equipo y datos generales (a un costado de la foto)
     const Dt = D.datos;
     const nombre = (jug.nombre || '').toUpperCase();
-    let size = 17;
+    let size = Dt.tamNombre;
     let lineas = renglones(g, nombre, f.bold, size, Dt.w);
     while (size > 11 && Math.max(...lineas.map((s) => g.ancho(s, f.bold, size))) > Dt.w) size -= 0.5;
     let y = Dt.y;
@@ -189,8 +192,8 @@ const Informe = (() => {
     t(jug.equipo || '', Dt.x, y, { font: f.bold, size: Dt.tamEquipo, color: C.gold, maxW: Dt.w });
     y += Dt.tamEquipo + 8;
     (jug.datos || []).forEach(([lab, val]) => {
-      t(lab, Dt.x, y, { size: 7, color: C.soft });
-      t(val || '–', Dt.x + Dt.columnaValor, y, { font: f.bold, size: 8.3, color: C.ink, maxW: Dt.w - Dt.columnaValor });
+      t(lab, Dt.x, y, { size: Dt.tamEtiqueta, color: C.soft });
+      t(val || '–', Dt.x + Dt.columnaValor, y, { font: f.bold, size: Dt.tamValor, color: C.ink, maxW: Dt.w - Dt.columnaValor });
       y += Dt.renglon;
     });
     const yAbajo = y - Dt.renglon + 2;
@@ -209,6 +212,26 @@ const Informe = (() => {
     const mapa = await img(ctx, jug.mapa);
     if (mapa) g.imagen(mapa, M.x, my, M.w, mh);
     else t('Sin mapa de calor', M.x + M.w / 2, my + mh / 2, { font: f.ital, size: 8.5, color: C.faint, align: 'center' });
+
+    // ---------- botón de video (link clicable en el PDF)
+    if (jug.video) {
+      const V = D.video, cxv = M.x + M.w / 2;
+      const ts = 8, tw = g.ancho(V.texto, f.bold, ts);
+      const ic = 13, gap = 6, bw = ic + gap + tw + 16, bh = 19;
+      const bx = cxv - bw / 2, by = V.y - bh / 2;
+      g.path(`M${f2(bx + 4)},${f2(by)} H${f2(bx + bw - 4)} Q${f2(bx + bw)},${f2(by)} ${f2(bx + bw)},${f2(by + 4)} V${f2(by + bh - 4)} Q${f2(bx + bw)},${f2(by + bh)} ${f2(bx + bw - 4)},${f2(by + bh)} H${f2(bx + 4)} Q${f2(bx)},${f2(by + bh)} ${f2(bx)},${f2(by + bh - 4)} V${f2(by + 4)} Q${f2(bx)},${f2(by)} ${f2(bx + 4)},${f2(by)} Z`, { border: C.gold, bw: 1.1 });
+      // ícono "play": círculo dorado con triángulo blanco
+      const icx = bx + 8 + ic / 2, icy = V.y;
+      g.circ(icx, icy, ic / 2, { color: C.gold });
+      g.path(`M${f2(icx - 2.2)},${f2(icy - 3.4)} L${f2(icx + 3.6)},${f2(icy)} L${f2(icx - 2.2)},${f2(icy + 3.4)} Z`, { color: rgb(1, 1, 1) });
+      t(V.texto, icx + ic / 2 + gap, V.y + ts * 0.36, { font: f.bold, size: ts, color: C.navy });
+      // zona clicable
+      const annot = ctx.doc.context.obj({
+        Type: 'Annot', Subtype: 'Link', Rect: [bx, P.h - (by + bh), bx + bw, P.h - by], Border: [0, 0, 0],
+        A: { Type: 'Action', S: 'URI', URI: PDFString.of(jug.video) },
+      });
+      page.node.addAnnot(ctx.doc.context.register(annot));
+    }
 
     // ---------- estadísticas (sin recuadro): arriba número grande, abajo número chico, etiqueta
     const Es = D.estadisticas;

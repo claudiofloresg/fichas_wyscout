@@ -238,8 +238,9 @@ def procesar_radar(src, dst):
 
 # ============================================================================= nombres completos
 def cargar_nombres():
-    """{slug(nombre Excel): nombre completo} de CARPETA_NOMBRES (NOMBRE EXCEL | NOMBRE COMPLETO)."""
-    out = {}
+    """CARPETA_NOMBRES (NOMBRE EXCEL | NOMBRE COMPLETO | VIDEO opcional).
+    Devuelve ({slug(nombre Excel): nombre completo}, {slug(nombre Excel): link del video})."""
+    out, videos = {}, {}
     for path in leer_carpeta(cfg("CARPETA_NOMBRES", "datos/nombres"), (".xlsx", ".xlsm", ".xls", ".csv")):
         hojas = {"csv": pd.read_csv(path, dtype=object)} if path.lower().endswith(".csv") \
             else pd.read_excel(path, sheet_name=None, dtype=object)
@@ -248,14 +249,19 @@ def cargar_nombres():
                 continue
             cols = [str(c) for c in df.columns]
             c_comp = next((c for c in cols if "complet" in slug(c)), cols[1])
-            c_exc = next((c for c in cols if c != c_comp), cols[0])
+            c_vid = next((c for c in cols if any(p in slug(c) for p in ("video", "link", "url"))), None)
+            c_exc = next((c for c in cols if c not in (c_comp, c_vid)), cols[0])
             n0 = len(out)
             for _, r in df.iterrows():
                 k, v = r[c_exc], r[c_comp]
-                if not es_vacio(k) and not es_vacio(v):
+                if es_vacio(k):
+                    continue
+                if not es_vacio(v):
                     out[slug(k)] = re.sub(r"\s+", " ", str(v)).strip()
+                if c_vid and not es_vacio(r[c_vid]):
+                    videos[slug(k)] = str(r[c_vid]).strip()
             print(f"  Nombres: {os.path.basename(path)} / {hoja}: {len(out) - n0}")
-    return out
+    return out, videos
 
 
 # ============================================================================= datos extra
@@ -411,7 +417,7 @@ def main():
     idx_fotos = indexar_imagenes(C.CARPETA_FOTOS)
     idx_mapas = indexar_imagenes(C.CARPETA_MAPAS)
     idx_radares = indexar_radares(C.CARPETA_RADARES)
-    nombres = cargar_nombres()
+    nombres, videos = cargar_nombres()
     extra = cargar_extra()
     print(f"Fotos: {len(idx_fotos)}   Mapas: {len(idx_mapas)}   Carpetas de radares: {len(idx_radares)}   "
           f"Nombres completos: {len(nombres)}")
@@ -517,6 +523,7 @@ def main():
                 "stats": stats_de(df, i, posicion, faltan),
                 "foto": foto,
                 "mapa": mapa,
+                "video": videos.get(slug(nom_x)),
                 "radares": radares,
             })
         for c in sorted(faltan):
