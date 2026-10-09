@@ -135,13 +135,14 @@ CARRERAS_PROG = _total("Progressive runs per 90", "Carreras Progresivas")
 PASES_LARGOS_REC = _total("Received long passes per 90", "Pases Largos Recibidos")
 PASES_RECIBIDOS = _total("Received passes per 90", "Pases Recibidos")
 FALTAS_RECIBIDAS = _total("Fouls suffered per 90", "Faltas Recibidas")
+FALTAS_GENERADAS = _total("Fouls 90", "Faltas Generadas")
 ACC_OFENSIVAS = _total("Successful attacking actions per 90", "Acciones Ofensivas Exitosas")
 ACC_DEFENSIVAS = _total("Successful defensive actions per 90", "Acciones Defensivas Exitosas")
 ASIST_TIRO = _total("Shot assists per 90", "Asistencias a Tiro")
 CENTROS_20M = _total("Deep completed crosses per 90", "Centros Últ. 20 m")
 INTERCEPCIONES = _total("Interceptions per 90", "Intercepciones")
 ENTRADAS = _total("Sliding tackles per 90", "Entradas")
-TIROS_BLOQ = _total("Shots blocked per 90", "Tiros Bloqueados")
+TIROS_BLOQ = _total("Shots blocked per 90", "Tiros Interceptados")
 # --- porteros ---
 GOLES_RECIBIDOS = ("Goles Recibidos", ("Conceded goals", _E), ("Conceded goals per 90", _D))
 XG_CONTRA = ("xG en Contra", ("xG against", _D), ("xG against per 90", _D))
@@ -163,9 +164,9 @@ ESTADISTICAS = {
         PASES_CORTOS, PASES_RECIBIDOS,
     ],
     "Defensa Central": [
-        MINUTOS, GOLES_CABEZA, DUELOS, PASES_RECIBIDOS,
-        FALTAS_RECIBIDAS, PASES_ULT_TERCIO, PASES_LARGOS, PASES,
-        PASES_ADELANTE, PASES_PROG, ACC_DEFENSIVAS, DUELOS_DEF,
+        MINUTOS, INTERCEPCIONES, DUELOS_DEF, DUELOS_AER,
+        TIROS_BLOQ, DUELOS_OF, PASES_LARGOS, PASES_PROG,
+        PASES_ULT_TERCIO, CARRERAS_PROG, ENTRADAS, FALTAS_GENERADAS,
     ],
     "Lateral": [
         MINUTOS, CENTROS, CARRERAS_PROG, DUELOS_OF,
