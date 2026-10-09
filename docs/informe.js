@@ -11,14 +11,15 @@ const DISENO_INFORME = {
     navy: '#0C2A4E', gold: '#B08A4E', ink: '#0C2A4E', soft: '#5A6470', faint: '#8B93A0', avatar: '#BFC4CA',
   },
 
-  credito: { texto: 'Inteligencia Deportiva Pumas', x: 932, y: 26 },   // esquina sup. derecha, sobre la línea azul
-  foto: { x: 56, y: 50, w: 96, h: 120 },
-  datos: { x: 166, y: 70, w: 186, columnaValor: 58, renglon: 13 },
+  credito: { texto: 'Inteligencia Deportiva Pumas', x: 932, y: 24.5 },   // esquina sup. derecha, centrado arriba de la línea azul
+  foto: { x: 52, w: 96, h: 120 },                 // se centra en vertical con el bloque de nombre + datos
+  datos: { x: 166, y: 70, w: 186, columnaValor: 58, renglon: 13, tamEquipo: 11 },
   mapa: { x: 364, y: 60, w: 232, h: 168 },   // centrado en la página (x + w/2 = 480)
   // tamEtiqueta / tamAbajo = tamaño del texto de la etiqueta y del número chico
   // sin título; y = arriba de la tabla. espacio = distancia número grande -> chico -> etiqueta;
   // interlineado = entre renglones de la etiqueta
-  estadisticas: { x: 616, y: 40, w: 316, yFin: 236, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
+  // la tabla se centra en vertical entre y y yFin
+  estadisticas: { x: 616, y: 36, w: 316, yFin: 236, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
   // radares (imágenes, 1 a 4): se reparten a lo largo de la ficha
   radares: {
     titulo: 'RADARES DE RENDIMIENTO', yTitulo: 244, tamTitulo: 9,
@@ -28,12 +29,12 @@ const DISENO_INFORME = {
   },
   // portada (primera hoja de cada jugador)
   portada: {
-    logo: 'assets/logo.png', logoAlto: 118, yLogo: 128,
-    yNombre: 330, tamNombre: 40, espaciado: 0.32,       // espaciado entre letras (fracción del tamaño)
-    texto: 'Inteligencia Deportiva', yTexto: 410,
-    marco: { x: 150, y: 150, w: 660, h: 290, hueco: 150 },   // líneas doradas; hueco = espacio para el logo
+    logo: 'assets/logo.png', logoAlto: 118,               // el logo se centra sobre la línea de arriba
+    tamNombre: 40, espaciado: 0.32,                       // el nombre se centra en el recuadro; espaciado entre letras
+    texto: 'Inteligencia Deportiva', tamTexto: 10,        // se centra sobre la línea de abajo
+    marco: { x: 150, y: 170, w: 660, h: 270, separacion: 16 },  // separacion = aire entre líneas y logo/texto
   },
-  yPie: 515,            // pie de página (debajo de la línea azul): Fuente / Datos al (2 renglones)
+  yPie: 519,            // pie de página (debajo de la línea azul)
   fuente: 'HUDL Wyscout',
 };
 
@@ -175,12 +176,6 @@ const Informe = (() => {
     // ---------- crédito (arriba a la derecha)
     t(D.credito.texto, D.credito.x, D.credito.y, { font: f.bold, size: 7.5, color: C.navy, align: 'right' });
 
-    // ---------- foto (sin recuadro; el blanco de la foto se funde con el fondo)
-    const F = D.foto;
-    const foto = await img(ctx, jug.foto);
-    if (foto) g.imagen(foto, F.x, F.y, F.w, F.h, { abajo: true, blend: BlendMode.Multiply });
-    else silueta(g, F.x, F.y, F.w, F.h);
-
     // ---------- nombre, equipo y datos generales (a un costado de la foto)
     const Dt = D.datos;
     const nombre = (jug.nombre || '').toUpperCase();
@@ -188,15 +183,24 @@ const Informe = (() => {
     let lineas = renglones(g, nombre, f.bold, size, Dt.w);
     while (size > 11 && Math.max(...lineas.map((s) => g.ancho(s, f.bold, size))) > Dt.w) size -= 0.5;
     let y = Dt.y;
+    const yArriba = Dt.y - size * 0.75;
     lineas.forEach((s) => { t(s, Dt.x, y, { font: f.bold, size, color: C.navy, maxW: Dt.w }); y += size * 1.08; });
-    y += 3;
-    t(jug.equipo || '', Dt.x, y, { font: f.bold, size: 8.5, color: C.gold, maxW: Dt.w });
-    y += 17;
+    y += Dt.tamEquipo * 0.45;
+    t(jug.equipo || '', Dt.x, y, { font: f.bold, size: Dt.tamEquipo, color: C.gold, maxW: Dt.w });
+    y += Dt.tamEquipo + 8;
     (jug.datos || []).forEach(([lab, val]) => {
       t(lab, Dt.x, y, { size: 7, color: C.soft });
       t(val || '–', Dt.x + Dt.columnaValor, y, { font: f.bold, size: 8.3, color: C.ink, maxW: Dt.w - Dt.columnaValor });
       y += Dt.renglon;
     });
+    const yAbajo = y - Dt.renglon + 2;
+
+    // ---------- foto (sin recuadro), centrada en vertical con el bloque de nombre + datos
+    const F = D.foto;
+    const fy = (yArriba + yAbajo) / 2 - F.h / 2;
+    const foto = await img(ctx, jug.foto);
+    if (foto) g.imagen(foto, F.x, fy, F.w, F.h, { abajo: true, blend: BlendMode.Multiply });
+    else silueta(g, F.x, fy, F.w, F.h);
 
     // ---------- mapa de calor
     const M = D.mapa;
@@ -217,7 +221,9 @@ const Informe = (() => {
       const big = Math.min(19, rh * 0.4);
       datos.forEach(([lab, arriba, abajo], k) => {
         const xc = Es.x + cw * (k % nc) + cw / 2;
-        let yy = y0 + Math.floor(k / nc) * rh + big * 0.85;
+        // alto del bloque (número grande + chico + 2 renglones de etiqueta), centrado en su renglón
+        const altoBloque = big * 0.72 + 2 * Es.espacio + Es.interlineado + 2;
+        let yy = y0 + Math.floor(k / nc) * rh + (rh - altoBloque) / 2 + big * 0.72;
         t(arriba, xc, yy, { font: f.bold, size: big, color: C.gold, align: 'center', maxW: cw - 4, minSize: 9 });
         yy += Es.espacio;
         // el renglón del número chico se reserva siempre: así todas las etiquetas quedan alineadas
@@ -249,7 +255,6 @@ const Informe = (() => {
 
     // ---------- pie de página (debajo de la línea azul)
     t(`Fuente: ${D.fuente}`, 38, D.yPie, { size: 6.4, color: C.faint, maxW: 300 });
-    t(`Datos al ${meta.generado.split(' ')[0]}`, 38, D.yPie + 8, { size: 6.4, color: C.faint, maxW: 300 });
   }
 
   // ------------------------------------------------------------------ portada
@@ -265,16 +270,19 @@ const Informe = (() => {
     const Mc = Po.marco, oro = C.gold, th = 1.1;
     const ln = (x1, y1, x2, y2) => page.drawLine({ start: { x: x1, y: Y(y1) }, end: { x: x2, y: Y(y2) }, thickness: th, color: oro });
     const cx = P.w / 2, x0 = Mc.x, x1 = Mc.x + Mc.w, y0 = Mc.y, y1 = Mc.y + Mc.h;
-    ln(x0, y0, cx - Mc.hueco, y0); ln(cx + Mc.hueco, y0, x1, y0);           // arriba
-    ln(x0, y0, x0, y1); ln(x1, y0, x1, y1);                                 // lados
-    ln(x0, y1, x0 + Mc.w * 0.2, y1); ln(x1 - Mc.w * 0.2, y1, x1, y1);       // abajo (solo esquinas)
 
-    // logo
+    // logo centrado sobre la línea de arriba (la línea se corta a los lados del logo)
     const logo = await img(ctx, Po.logo);
-    if (logo) {
-      const h = Po.logoAlto, w = logo.width * h / logo.height;
-      page.drawImage(logo, { x: cx - w / 2, y: Y(Po.yLogo + h), width: w, height: h });
-    }
+    const lh = Po.logoAlto, lw = logo ? logo.width * lh / logo.height : 0;
+    if (logo) page.drawImage(logo, { x: cx - lw / 2, y: Y(y0 + lh / 2), width: lw, height: lh });
+    const huecoArriba = logo ? lw / 2 + Mc.separacion : 0;
+    ln(x0, y0, cx - huecoArriba, y0); ln(cx + huecoArriba, y0, x1, y0);     // arriba
+    ln(x0, y0, x0, y1); ln(x1, y0, x1, y1);                                 // lados
+
+    // texto centrado sobre la línea de abajo (la línea se corta a los lados del texto)
+    const tw = f.bold.widthOfTextAtSize(limpio(f.bold, Po.texto), Po.tamTexto);
+    g.t(Po.texto, cx, y1 + Po.tamTexto * 0.36, { font: f.bold, size: Po.tamTexto, color: C.navy, align: 'center' });
+    ln(x0, y1, cx - tw / 2 - Mc.separacion, y1); ln(cx + tw / 2 + Mc.separacion, y1, x1, y1);   // abajo
 
     // nombre con letras espaciadas (se achica si no cabe)
     const nombre = limpio(f.bold, jug.nombre || '');
@@ -283,11 +291,11 @@ const Informe = (() => {
       + Po.espaciado * s * (nombre.length - 1);
     while (size > 16 && anchoNombre(size) > Mc.w - 40) size -= 1;
     let x = cx - anchoNombre(size) / 2;
+    const yNombre = (y0 + y1) / 2 + size * 0.36;            // centro vertical del recuadro
     for (const ch of nombre) {
-      page.drawText(ch, { x, y: Y(Po.yNombre), size, font: f.bold, color: C.navy });
+      page.drawText(ch, { x, y: Y(yNombre), size, font: f.bold, color: C.navy });
       x += f.bold.widthOfTextAtSize(ch, size) + Po.espaciado * size;
     }
-    g.t(Po.texto, cx, Po.yTexto, { font: f.bold, size: 10, color: C.navy, align: 'center' });
   }
 
   async function generar(jugadores, meta, conPortada = true) {
