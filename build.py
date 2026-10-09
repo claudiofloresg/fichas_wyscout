@@ -391,6 +391,14 @@ def stats_de(df, i, posicion, faltan):
         v = to_number(df.at[i, col])
         return None if math.isnan(v) else v
 
+    out = []
+    for etiqueta, arriba, abajo in cfg("ESTADISTICAS", {}).get(posicion, []):
+        a = fmt_num(valor(arriba[0]), arriba[1]) if arriba else "–"
+        b = fmt_num(valor(abajo[0]), abajo[1]) if abajo else None
+        out.append([etiqueta, a, b])
+    return out
+
+
 # ============================================================================= main
 def main():
     excels = leer_carpeta(C.CARPETA_EXCEL)
