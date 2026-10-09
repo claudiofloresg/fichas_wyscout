@@ -19,7 +19,7 @@ const DISENO_INFORME = {
   // sin título; y = arriba de la tabla. espacio = distancia número grande -> chico -> etiqueta;
   // interlineado = entre renglones de la etiqueta
   // la tabla se centra en vertical entre y y yFin
-  estadisticas: { x: 616, y: 36, w: 316, yFin: 236, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
+  estadisticas: { x: 616, y: 46, w: 316, yFin: 236, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
   // radares (imágenes, 1 a 4): se reparten a lo largo de la ficha
   radares: {
     titulo: 'RADARES DE RENDIMIENTO', yTitulo: 244, tamTitulo: 9,
