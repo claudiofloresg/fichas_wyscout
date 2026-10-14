@@ -131,8 +131,11 @@ def indexar_radares(carpeta):
                 r["promedio"] = os.path.join(p, f)
             elif s == k_jug:
                 r["jugador"] = os.path.join(p, f)
+        # radar vs = solo "<Nombre de la carpeta>_<otro jugador>.png"; cualquier otro nombre se ignora
+        pref = slug(d) + "_"
         otros = [f for f in imgs if slug(os.path.splitext(f)[0]) not in (k_prom, k_jug)]
-        r["vs"] = [os.path.join(p, f) for f in otros]
+        r["vs"] = [os.path.join(p, f) for f in otros if slug(os.path.splitext(f)[0]).startswith(pref)]
+        r["ignorados"] = [f for f in otros if not slug(os.path.splitext(f)[0]).startswith(pref)]
         out[slug(d)] = r
     return out
 
@@ -442,7 +445,7 @@ def main():
     print(f"Fotos: {len(idx_fotos)}   Mapas: {len(idx_mapas)}   Carpetas de radares: {len(idx_radares)}   "
           f"Nombres completos: {len(nombres)}")
 
-    rep = {k: [] for k in ("sin_posicion", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar", "radar_extra",
+    rep = {k: [] for k in ("sin_posicion", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar", "radar_extra", "radar_ignorado",
                            "paises", "columnas", "repetidos", "extra_sin_jugador")}
     usados = set()
     orden_pos = [p for _, p in cfg("POSICIONES", [])]
@@ -500,6 +503,8 @@ def main():
 
             radares = []
             rr = buscar(idx_radares, *claves) or {}
+            for f in rr.get("ignorados", []):
+                rep["radar_ignorado"].append(f"{nom_x}: {f}")
             # orden en la ficha: jugador, promedio (siempre 2o), vs...
             fuentes = ([("jugador", rr["jugador"])] if rr.get("jugador") else []) \
                 + ([("promedio", rr["promedio"])] if rr.get("promedio") else []) \
@@ -593,6 +598,7 @@ def main():
         "sin_mapa": "Sin mapa de calor",
         "sin_radar": "Radares faltantes",
         "radar_extra": "Carpetas con más radares del máximo (MAX_RADARES)",
+        "radar_ignorado": "Imágenes en carpetas de radares que no se usan (el vs debe llamarse <Jugador>_<Otro>.png)",
         "extra_sin_jugador": "Nombres en los Excel de datos extra que no están en ningún Excel de posición",
     }
     with open(REPORTE, "w", encoding="utf-8") as f:
