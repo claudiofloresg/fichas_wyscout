@@ -1,45 +1,45 @@
 /* =============================================================================
    informe.js — Ficha gráfica (PDF horizontal 16:9) con pdf-lib
    Todo el diseño (colores, medidas, textos) está en DISENO_INFORME.
-   Unidades: puntos. Página = 960 x 540 pt.
+   Unidades: puntos. Página = carta horizontal 792 x 612 pt (11 x 8.5 in), lista para imprimir.
    Coordenadas: x desde la izquierda, y desde ARRIBA.
    ========================================================================== */
 const DISENO_INFORME = {
-  pagina: { w: 960, h: 540 },
-  fondo: 'assets/fondo_informe.jpg',
+  pagina: { w: 792, h: 612 },          // carta horizontal
+  fondo: 'assets/fondo_carta.jpg',
   colores: {
     navy: '#0C2A4E', gold: '#B08A4E', ink: '#0C2A4E', soft: '#5A6470', faint: '#8B93A0', avatar: '#BFC4CA',
   },
 
-  credito: { texto: 'Inteligencia Deportiva Pumas', x: 932, y: 24.5 },   // esquina sup. derecha, centrado arriba de la línea azul
-  foto: { x: 52, w: 96, h: 120 },                 // se centra en vertical con el bloque de nombre + datos
+  credito: { texto: 'Inteligencia Deportiva Pumas', x: 758, y: 28 },   // esquina sup. derecha, centrado arriba de la línea azul
+  foto: { x: 32, w: 94, h: 118 },                 // se centra en vertical con el bloque de nombre + datos
   // tamNombre = nombre del jugador; tamEtiqueta / tamValor = 'Posición' / 'Delantero'
-  datos: { x: 166, y: 74, w: 196, columnaValor: 74, renglon: 15.5, tamEquipo: 12, tamNombre: 20, tamEtiqueta: 8.2, tamValor: 9.6 },
-  mapa: { x: 384, y: 60, w: 192, h: 138 },   // centrado en la página (x + w/2 = 480)
+  datos: { x: 138, y: 76, w: 152, columnaValor: 62, renglon: 15, tamEquipo: 11, tamNombre: 18, tamEtiqueta: 7.8, tamValor: 9 },
+  mapa: { x: 298, y: 54, w: 196, h: 156 },   // centrado en la página (x + w/2 = 396)
   // botón de video (debajo del mapa): solo sale si el jugador tiene link en nombres.xlsx (columna VIDEO)
   video: { texto: 'VER VIDEO', lugar: 'foto', y: 214, debajoFoto: 16 },   // lugar: 'foto' (debajo de la foto) o 'mapa' (debajo del mapa, a la altura y)
   // tamEtiqueta / tamAbajo = tamaño del texto de la etiqueta y del número chico
   // sin título; y = arriba de la tabla. espacio = distancia número grande -> chico -> etiqueta;
   // interlineado = entre renglones de la etiqueta
   // la tabla se centra en vertical entre y y yFin
-  estadisticas: { x: 616, y: 46, w: 316, yFin: 236, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
+  estadisticas: { x: 500, y: 44, w: 264, yFin: 296, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
   // radares (imágenes, 1 a 4): se reparten a lo largo de la ficha
   radares: {
-    titulo: 'RADARES DE RENDIMIENTO', yTitulo: 244, tamTitulo: 9,
-    y: 258, yFin: 490,            // alto disponible para las imágenes
-    x0: 40, x1: 920,              // ancho disponible
+    titulo: 'RADARES DE RENDIMIENTO', yTitulo: 310, tamTitulo: 9,
+    y: 320, yFin: 560,            // alto disponible para las imágenes
+    x0: 26, x1: 766,              // ancho disponible
     sep: 6,                       // separación mínima entre radares
   },
   // portada (primera hoja de cada jugador)
   portada: {
     logo: null, logoAlto: 118,                            // logo: null = sin escudo; 'assets/logo.png' lo pone sobre la línea de arriba
     tamNombre: 40, espaciado: 0.32,                       // el nombre se centra en el recuadro; espaciado entre letras
-    texto: 'Inteligencia Deportiva', tamTexto: 10,        // se centra sobre la línea de abajo
-    marco: { x: 150, w: 660, h: 270, separacion: 16 },    // el recuadro se centra en vertical entre las líneas azules
-    yArriba: 32, yAbajo: 503,                             // líneas azules del fondo
+    texto: 'Inteligencia Deportiva', tamTexto: 9,        // misma letra y espaciado que el nombre, más chica; centrado sobre la línea de abajo
+    marco: { x: 116, w: 560, h: 300, separacion: 16 },    // el recuadro se centra en vertical entre las líneas azules
+    yArriba: 36.3, yAbajo: 569.5,                             // líneas azules del fondo
   },
-  yPie: 519,            // pie de página (debajo de la línea azul)
-  fuente: 'HUDL Wyscout',
+  yPie: 589,            // pie de página (debajo de la línea azul)
+  fuente: '',          // texto del pie (vacío = sin pie)
 };
 
 const Informe = (() => {
@@ -275,13 +275,13 @@ const Informe = (() => {
       // el ancho de la ficha se reparte en partes iguales; cada radar va al centro de su parte
       const n = ims.length, h = R.yFin - R.y;
       const slot = (R.x1 - R.x0) / n;
-      ims.forEach((im, k) => g.imagen(im, R.x0 + k * slot + R.sep / 2, R.y, slot - R.sep, h));
+      ims.forEach((im, k) => g.imagen(im, R.x0 + k * slot + R.sep / 2, R.y, slot - R.sep, h, { arriba: true }));
     } else {
       t('Sin radares', P.w / 2, (R.y + R.yFin) / 2, { font: f.ital, size: 8.5, color: C.faint, align: 'center' });
     }
 
     // ---------- pie de página (debajo de la línea azul)
-    t(`Fuente: ${D.fuente}`, 38, D.yPie, { size: 6.4, color: C.faint, maxW: 300 });
+    if (D.fuente) t(D.fuente, 30, D.yPie, { size: 6.4, color: C.faint, maxW: 300 });
   }
 
   // ------------------------------------------------------------------ portada
@@ -309,8 +309,18 @@ const Informe = (() => {
     ln(x0, y0, x0, y1); ln(x1, y0, x1, y1);                                 // lados
 
     // "Inteligencia Deportiva" centrado sobre la línea de abajo (la línea se corta a sus lados)
-    const tw = f.bold.widthOfTextAtSize(limpio(f.bold, Po.texto), Po.tamTexto);
-    g.t(Po.texto, cx, y1 + Po.tamTexto * 0.36, { font: f.bold, size: Po.tamTexto, color: C.navy, align: 'center' });
+    // texto con letras espaciadas, igual que el nombre (misma fuente y proporción de espaciado)
+    const espaciado = (s, size) => {
+      s = limpio(f.bold, s);
+      const w = [...s].reduce((a, ch) => a + f.bold.widthOfTextAtSize(ch, size), 0) + Po.espaciado * size * (s.length - 1);
+      return { s, w };
+    };
+    const txt = espaciado(Po.texto, Po.tamTexto), tw = txt.w;
+    let xt = cx - tw / 2;
+    for (const ch of txt.s) {
+      page.drawText(ch, { x: xt, y: Y(y1 + Po.tamTexto * 0.36), size: Po.tamTexto, font: f.bold, color: C.navy });
+      xt += f.bold.widthOfTextAtSize(ch, Po.tamTexto) + Po.espaciado * Po.tamTexto;
+    }
     ln(x0, y1, cx - tw / 2 - Mc.separacion, y1); ln(cx + tw / 2 + Mc.separacion, y1, x1, y1);
 
     // nombre corto (primer nombre + apellido) con letras espaciadas, centrado en el recuadro
