@@ -129,7 +129,7 @@ PASES_CORTOS = _ganadas("Accurate short / medium passes, %", "Short / medium pas
 PASES_PROG = _ganadas("Accurate progressive passes, %", "Progressive passes per 90", "Pases Progresivos")
 PASES_AREA = _ganadas("Accurate passes to penalty area, %", "Passes to penalty area per 90", "Pases al Área Precisos")
 PASES_ULT_TERCIO = _ganadas("Accurate passes to final third, %", "Passes to final third per 90", "Pases Últ. Tercio")
-PASES_ESPACIO = _ganadas("Accurate through passes, %", "Through passes per 90", "Pases al Espacio Precisos")
+PASES_PROFUNDIDAD = _ganadas("Accurate through passes, %", "Through passes per 90", "Pases en Profundidad")
 TIROS = _ganadas("Shots on target, %", "Shots per 90", "Tiros a Portería")
 CARRERAS_PROG = _total("Progressive runs per 90", "Carreras Progresivas")
 PASES_LARGOS_REC = _total("Received long passes per 90", "Pases Largos Recibidos")
@@ -174,9 +174,9 @@ ESTADISTICAS = {
         PASES_ULT_TERCIO, ASIST_TIRO, CENTROS_20M, ACC_DEFENSIVAS,
     ],
     "Mediocampista": [
-        MINUTOS, DUELOS_OF, CARRERAS_PROG, FALTAS_RECIBIDAS,
-        PASES_AREA, PASES_RECIBIDOS, PASES_LARGOS, XA,
-        ASISTENCIAS, PASES_PROG, PASES_ESPACIO, ACC_DEFENSIVAS,
+        MINUTOS, INTERCEPCIONES, DUELOS_DEF, ASIST_TIRO,
+        DUELOS_AER, DUELOS_OF, REGATES, REGATES,
+        CARRERAS_PROG, PASES_PROG, CENTROS, TIROS,
     ],
     "Extremo": [
         MINUTOS, GOLES, ASISTENCIAS, CARRERAS_PROG,
