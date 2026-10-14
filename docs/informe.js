@@ -14,15 +14,17 @@ const DISENO_INFORME = {
   credito: { texto: 'Inteligencia Deportiva Pumas', x: 758, y: 28 },   // esquina sup. derecha, centrado arriba de la línea azul
   foto: { x: 32, w: 94, h: 118 },                 // se centra en vertical con el bloque de nombre + datos
   // tamNombre = nombre del jugador; tamEtiqueta / tamValor = 'Posición' / 'Delantero'
-  datos: { x: 138, y: 76, w: 152, columnaValor: 62, renglon: 15, tamEquipo: 11, tamNombre: 18, tamEtiqueta: 7.8, tamValor: 9 },
-  mapa: { x: 298, y: 54, w: 196, h: 156 },   // centrado en la página (x + w/2 = 396)
+  // tamNombre = tamaño máximo del nombre (encabezado de la sección; se achica para caber en un renglón)
+  datos: { x: 138, y: 76, centrar: true, sepNombre: 14, w: 152, columnaValor: 62, renglon: 15, tamEquipo: 11, tamNombre: 16, tamEtiqueta: 7.8, tamValor: 9 },
+  mapa: { x: 316, y: 104, w: 160, h: 128 },   // centrado en la página (x + w/2 = 396) y en vertical entre la línea azul y los radares
   // botón de video (debajo del mapa): solo sale si el jugador tiene link en nombres.xlsx (columna VIDEO)
   video: { texto: 'VER VIDEO', lugar: 'foto', y: 214, debajoFoto: 16 },   // lugar: 'foto' (debajo de la foto) o 'mapa' (debajo del mapa, a la altura y)
   // tamEtiqueta / tamAbajo = tamaño del texto de la etiqueta y del número chico
   // sin título; y = arriba de la tabla. espacio = distancia número grande -> chico -> etiqueta;
   // interlineado = entre renglones de la etiqueta
   // la tabla se centra en vertical entre y y yFin
-  estadisticas: { x: 500, y: 44, w: 264, yFin: 296, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
+  // la tabla se centra entre y y yFin; altoRenglon = separación entre renglones (más chico = más juntas)
+  estadisticas: { x: 500, y: 40, w: 264, yFin: 300, altoRenglon: 64, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
   // radares (imágenes, 1 a 4): se reparten a lo largo de la ficha
   radares: {
     titulo: 'RADARES DE RENDIMIENTO', yTitulo: 310, tamTitulo: 9,
@@ -201,27 +203,35 @@ const Informe = (() => {
     t(D.credito.texto, D.credito.x, D.credito.y, { font: f.bold, size: 7.5, color: C.navy, align: 'right' });
 
     // ---------- nombre, equipo y datos generales (a un costado de la foto)
-    const Dt = D.datos;
+    const Dt = D.datos, F = D.foto, Es0 = D.estadisticas;
+    // nombre = encabezado de toda la sección (de la foto al final de los datos), en un renglón
+    const secX0 = F.x, secX1 = Dt.x + Dt.w, secW = secX1 - secX0;
     const nombre = (jug.nombre || '').toUpperCase();
     let size = Dt.tamNombre;
-    let lineas = renglones(g, nombre, f.bold, size, Dt.w);
-    while (size > 11 && Math.max(...lineas.map((s) => g.ancho(s, f.bold, size))) > Dt.w) size -= 0.5;
-    let y = Dt.y;
-    const yArriba = Dt.y - size * 0.75;
-    lineas.forEach((s) => { t(s, Dt.x, y, { font: f.bold, size, color: C.navy, maxW: Dt.w }); y += size * 1.08; });
-    y += Dt.tamEquipo * 0.45;
+    while (size > 9 && g.ancho(nombre, f.bold, size) > secW) size -= 0.25;
+    // debajo: foto a la izquierda; equipo + datos a la derecha (centrados entre sí)
+    const nDatos = (jug.datos || []).length;
+    const altoDatos = Dt.tamEquipo * 0.75 + Dt.tamEquipo * 0.45 + 8 + Math.max(0, nDatos - 1) * Dt.renglon + 2;
+    const altoVideo = (jug.video && D.video.lugar === 'foto') ? D.video.debajoFoto + 10 : 0;
+    const altoCuerpo = Math.max(altoDatos, F.h + altoVideo);
+    const altoTotal = size * 0.75 + Dt.sepNombre + altoCuerpo;
+    const yTop = Dt.centrar ? (Es0.y + Es0.yFin) / 2 - altoTotal / 2 : Dt.y - size * 0.75;
+    t(nombre, (secX0 + secX1) / 2, yTop + size * 0.75, { font: f.bold, size, color: C.navy, align: 'center' });
+    const yCuerpo = yTop + size * 0.75 + Dt.sepNombre;
+
+    // equipo + datos generales
+    let y = yCuerpo + (altoCuerpo - altoDatos) / 2 + Dt.tamEquipo * 0.75;
     t(jug.equipo || '', Dt.x, y, { font: f.bold, size: Dt.tamEquipo, color: C.gold, maxW: Dt.w });
-    y += Dt.tamEquipo + 8;
+    y += Dt.tamEquipo * 0.45 + 8;
+    y += Dt.tamEtiqueta * 0.75 + 4;
     (jug.datos || []).forEach(([lab, val]) => {
       t(lab, Dt.x, y, { size: Dt.tamEtiqueta, color: C.soft });
       t(val || '–', Dt.x + Dt.columnaValor, y, { font: f.bold, size: Dt.tamValor, color: C.ink, maxW: Dt.w - Dt.columnaValor });
       y += Dt.renglon;
     });
-    const yAbajo = y - Dt.renglon + 2;
 
-    // ---------- foto (sin recuadro), centrada en vertical con el bloque de nombre + datos
-    const F = D.foto;
-    const fy = (yArriba + yAbajo) / 2 - F.h / 2;
+    // foto (sin recuadro) + botón de video debajo
+    const fy = yCuerpo + (altoCuerpo - F.h - altoVideo) / 2;
     const foto = await img(ctx, jug.foto);
     if (foto) g.imagen(foto, F.x, fy, F.w, F.h, { abajo: true, blend: BlendMode.Multiply });
     else silueta(g, F.x, fy, F.w, F.h);
@@ -243,8 +253,8 @@ const Informe = (() => {
     if (datos.length) {
       const nc = datos.length <= 16 ? 4 : 5, cw = Es.w / nc;
       const nf = Math.ceil(datos.length / nc);
-      const y0 = Es.y;
-      const rh = (Es.yFin - y0) / nf;
+      const rh = Math.min(Es.altoRenglon || 1e9, (Es.yFin - Es.y) / nf);
+      const y0 = Es.y + ((Es.yFin - Es.y) - rh * nf) / 2;          // bloque centrado en su espacio
       const big = Math.min(19, rh * 0.4);
       datos.forEach(([lab, arriba, abajo], k) => {
         const xc = Es.x + cw * (k % nc) + cw / 2;
