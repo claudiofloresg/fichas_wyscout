@@ -38,7 +38,7 @@ POSICIONES = [
     (["portero", "porteros", "arquero"],             "Portero"),
     (["central", "centrales", "defensa_central"],    "Defensa Central"),
     (["lateral", "laterales"],                       "Lateral"),
-    (["mediocampista", "medio", "medios", "volante"], "Mediocampista"),
+    (["mediocampista", "medio", "medios", "volante"], "Contención"),
     (["extremo", "extremos"],                        "Extremo"),
     (["delantero", "delanteros"],                    "Delantero"),
 ]
@@ -173,7 +173,7 @@ ESTADISTICAS = {
         ACC_OFENSIVAS, PASES_LARGOS_REC, XA, PASES_PROG,
         PASES_ULT_TERCIO, ASIST_TIRO, CENTROS_20M, ACC_DEFENSIVAS,
     ],
-    "Mediocampista": [
+    "Contención": [
         MINUTOS, INTERCEPCIONES, DUELOS_DEF, ASIST_TIRO,
         DUELOS_AER, DUELOS_OF, REGATES, REGATES,
         CARRERAS_PROG, PASES_PROG, CENTROS, TIROS,
