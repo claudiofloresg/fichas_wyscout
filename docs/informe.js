@@ -27,7 +27,7 @@ const DISENO_INFORME = {
   estadisticas: { x: 500, y: 40, w: 264, yFin: 300, altoRenglon: 64, tamEtiqueta: 7, tamAbajo: 7, espacio: 10, interlineado: 8.4 },
   // radares (imágenes, 1 a 4): se reparten a lo largo de la ficha
   radares: {
-    titulo: 'RADARES DE RENDIMIENTO', yTitulo: 310, tamTitulo: 9,
+    titulo: 'RADARES DE RENDIMIENTO', yTitulo: 300, tamTitulo: 9,
     y: 320, yFin: 560,            // alto disponible para las imágenes
     x0: 26, x1: 766,              // ancho disponible
     sep: 6,                       // separación mínima entre radares

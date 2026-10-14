@@ -352,7 +352,8 @@ def fmt_dato(v, formato, posicion, rep):
     if formato == "kg":
         return None if math.isnan(n) else f"{int(round(n))} kg"
     if formato == "pie":
-        return {"right": "Derecho", "left": "Izquierdo", "both": "Ambidiestro"}.get(str(v).strip().lower(), str(v))
+        p = str(v).strip()
+        return {"right": "Derecho", "left": "Izquierdo", "both": "Ambidiestro"}.get(p.lower(), p.capitalize())
     if formato == "pais":
         return cfg("SEPARADOR_PAISES", " – ").join(traducir_pais(p, rep) for p in str(v).split(",") if p.strip())
     if formato == "fecha":
