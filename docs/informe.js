@@ -32,10 +32,11 @@ const DISENO_INFORME = {
   },
   // portada (primera hoja de cada jugador)
   portada: {
-    logo: 'assets/logo.png', logoAlto: 118,               // el logo se centra sobre la línea de arriba
+    logo: null, logoAlto: 118,                            // logo: null = sin escudo; 'assets/logo.png' lo pone sobre la línea de arriba
     tamNombre: 40, espaciado: 0.32,                       // el nombre se centra en el recuadro; espaciado entre letras
     texto: 'Inteligencia Deportiva', tamTexto: 10,        // se centra sobre la línea de abajo
-    marco: { x: 150, y: 170, w: 660, h: 270, separacion: 16 },  // separacion = aire entre líneas y logo/texto
+    marco: { x: 150, w: 660, h: 270, separacion: 16 },    // el recuadro se centra en vertical entre las líneas azules
+    yArriba: 32, yAbajo: 503,                             // líneas azules del fondo
   },
   yPie: 519,            // pie de página (debajo de la línea azul)
   fuente: 'HUDL Wyscout',
@@ -292,32 +293,34 @@ const Informe = (() => {
     const Y = (y) => P.h - y;
     if (ctx.fondo) page.drawImage(ctx.fondo, { x: 0, y: 0, width: P.w, height: P.h });
 
-    // marco dorado tipo "corchetes": arriba con hueco para el logo, abajo abierto al centro
+    // recuadro dorado centrado en vertical entre las líneas azules del fondo
     const Mc = Po.marco, oro = C.gold, th = 1.1;
     const ln = (x1, y1, x2, y2) => page.drawLine({ start: { x: x1, y: Y(y1) }, end: { x: x2, y: Y(y2) }, thickness: th, color: oro });
-    const cx = P.w / 2, x0 = Mc.x, x1 = Mc.x + Mc.w, y0 = Mc.y, y1 = Mc.y + Mc.h;
+    const cx = P.w / 2, x0 = Mc.x, x1 = Mc.x + Mc.w;
+    const y0 = (Po.yArriba + Po.yAbajo) / 2 - Mc.h / 2, y1 = y0 + Mc.h;
 
-    // logo centrado sobre la línea de arriba (la línea se corta a los lados del logo)
-    const logo = await img(ctx, Po.logo);
+    // escudo opcional, centrado sobre la línea de arriba (la línea se corta a sus lados)
+    const logo = Po.logo ? await img(ctx, Po.logo) : null;
     const lh = Po.logoAlto, lw = logo ? logo.width * lh / logo.height : 0;
-    if (logo) page.drawImage(logo, { x: cx - lw / 2, y: Y(y0 + lh / 2), width: lw, height: lh });
-    const huecoArriba = logo ? lw / 2 + Mc.separacion : 0;
-    ln(x0, y0, cx - huecoArriba, y0); ln(cx + huecoArriba, y0, x1, y0);     // arriba
+    if (logo) {
+      page.drawImage(logo, { x: cx - lw / 2, y: Y(y0 + lh / 2), width: lw, height: lh });
+      ln(x0, y0, cx - lw / 2 - Mc.separacion, y0); ln(cx + lw / 2 + Mc.separacion, y0, x1, y0);
+    } else ln(x0, y0, x1, y0);                                              // arriba completa
     ln(x0, y0, x0, y1); ln(x1, y0, x1, y1);                                 // lados
 
-    // texto centrado sobre la línea de abajo (la línea se corta a los lados del texto)
+    // "Inteligencia Deportiva" centrado sobre la línea de abajo (la línea se corta a sus lados)
     const tw = f.bold.widthOfTextAtSize(limpio(f.bold, Po.texto), Po.tamTexto);
     g.t(Po.texto, cx, y1 + Po.tamTexto * 0.36, { font: f.bold, size: Po.tamTexto, color: C.navy, align: 'center' });
-    ln(x0, y1, cx - tw / 2 - Mc.separacion, y1); ln(cx + tw / 2 + Mc.separacion, y1, x1, y1);   // abajo
+    ln(x0, y1, cx - tw / 2 - Mc.separacion, y1); ln(cx + tw / 2 + Mc.separacion, y1, x1, y1);
 
-    // nombre con letras espaciadas (se achica si no cabe)
-    const nombre = limpio(f.bold, jug.nombre || '');
+    // nombre corto (primer nombre + apellido) con letras espaciadas, centrado en el recuadro
+    const nombre = limpio(f.bold, jug.nombrePortada || jug.nombre || '');
     let size = Po.tamNombre;
     const anchoNombre = (s) => [...nombre].reduce((a, ch) => a + f.bold.widthOfTextAtSize(ch, s), 0)
       + Po.espaciado * s * (nombre.length - 1);
     while (size > 16 && anchoNombre(size) > Mc.w - 40) size -= 1;
     let x = cx - anchoNombre(size) / 2;
-    const yNombre = (y0 + y1) / 2 + size * 0.36;            // centro vertical del recuadro
+    const yNombre = (y0 + y1) / 2 + size * 0.36;
     for (const ch of nombre) {
       page.drawText(ch, { x, y: Y(yNombre), size, font: f.bold, color: C.navy });
       x += f.bold.widthOfTextAtSize(ch, size) + Po.espaciado * size;

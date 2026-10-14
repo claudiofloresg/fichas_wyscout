@@ -264,6 +264,26 @@ def cargar_nombres():
     return out, videos
 
 
+def nombre_portada(nom_excel, completo):
+    """Nombre corto para la portada: primer nombre + apellido como lo escribe Wyscout.
+      'A. Bertaccini'  + 'Adriano Bertaccini'                    -> 'Adriano Bertaccini'
+      'S. Godoy'       + 'Santiago Leandro Godoy'                -> 'Santiago Godoy'
+      'J. Hernández'   + 'José Francisco Hernández de la Torre'  -> 'José Hernández'
+      'Juninho' (sin inicial = apodo)                            -> 'Juninho'"""
+    m = re.match(r"^(?:[^\W\d_]{1,2}\.\s*)+(.+)$", nom_excel)
+    if not m or not completo:
+        return nom_excel                       # apodo, nombre sin inicial o sin nombre completo: tal cual
+    apellido = m.group(1).strip()
+    toks = completo.split()
+    ap = apellido.split()
+    # el apellido como viene en el nombre completo (con acentos), si se encuentra
+    for i in range(1, len(toks) - len(ap) + 1):
+        if [slug(t) for t in toks[i:i + len(ap)]] == [slug(t) for t in ap]:
+            apellido = " ".join(toks[i:i + len(ap)])
+            break
+    return f"{toks[0]} {apellido}"
+
+
 # ============================================================================= datos extra
 def cargar_extra():
     """Excel(es) de CARPETA_EXTRA: 1a columna = nombre tal cual el Excel de Wyscout,
@@ -524,6 +544,7 @@ def main():
                 "foto": foto,
                 "mapa": mapa,
                 "video": videos.get(slug(nom_x)),
+                "nombrePortada": nombre_portada(nom_x, completo),
                 "radares": radares,
             })
         for c in sorted(faltan):
