@@ -112,32 +112,61 @@ def indexar_imagenes(carpeta, recursivo=True):
 
 
 def indexar_radares(carpeta):
-    """{slug(nombre carpeta): {"promedio": ruta, "jugador": ruta, "vs": ruta}}"""
+    """Radares por jugador y posición. Acepta cualquiera de estas formas:
+        radar/<Nombre>/<Posición>/jugador.png     (jugador evaluado en varias posiciones)
+        radar/<Posición>/<Nombre>/jugador.png
+        radar/<Nombre>/jugador.png                (sin posición: sirve para todas)
+    La carpeta de posición se reconoce igual que los Excel ("central", "Mediocampista", "medio"...).
+    Devuelve {(slug(nombre), posición o None): {"promedio", "jugador", "vs", "ignorados"}}."""
     out = {}
     carpeta = ruta(carpeta)
     if not os.path.isdir(carpeta):
         print(f"  [aviso] no existe la carpeta {carpeta}")
         return out
     k_prom, k_jug = slug(cfg("RADAR_PROMEDIO", "promedio")), slug(cfg("RADAR_JUGADOR", "jugador"))
-    for d in sorted(os.listdir(carpeta)):
-        p = os.path.join(carpeta, d)
-        if not os.path.isdir(p):
+    for raiz, _, archivos in os.walk(carpeta):
+        imgs = sorted(f for f in archivos if os.path.splitext(f)[1].lower() in C.EXTENSIONES_IMAGEN)
+        rel = os.path.relpath(raiz, carpeta)
+        if not imgs or rel == ".":
             continue
-        imgs = sorted(f for f in os.listdir(p) if os.path.splitext(f)[1].lower() in C.EXTENSIONES_IMAGEN)
+        partes = rel.split(os.sep)
+        if len(partes) == 1:
+            nombre, pos = partes[0], None
+        elif len(partes) == 2:
+            p0, p1 = posicion_de(partes[0]), posicion_de(partes[1])
+            if p1 and not p0:
+                nombre, pos = partes[0], p1
+            elif p0 and not p1:
+                nombre, pos = partes[1], p0
+            else:
+                print(f"  [aviso] radares: no sé cuál es la posición en '{rel}'; se omite")
+                continue
+        else:
+            print(f"  [aviso] radares: carpeta con demasiados niveles '{rel}'; se omite")
+            continue
         r = {}
         for f in imgs:
             s = slug(os.path.splitext(f)[0])
             if s == k_prom:
-                r["promedio"] = os.path.join(p, f)
+                r["promedio"] = os.path.join(raiz, f)
             elif s == k_jug:
-                r["jugador"] = os.path.join(p, f)
-        # radar vs = solo "<Nombre de la carpeta>_<otro jugador>.png"; cualquier otro nombre se ignora
-        pref = slug(d) + "_"
+                r["jugador"] = os.path.join(raiz, f)
+        # radar vs = solo "<Nombre del jugador>_<otro jugador>.png"; cualquier otro nombre se ignora
+        pref = slug(nombre) + "_"
         otros = [f for f in imgs if slug(os.path.splitext(f)[0]) not in (k_prom, k_jug)]
-        r["vs"] = [os.path.join(p, f) for f in otros if slug(os.path.splitext(f)[0]).startswith(pref)]
-        r["ignorados"] = [f for f in otros if not slug(os.path.splitext(f)[0]).startswith(pref)]
-        out[slug(d)] = r
+        r["vs"] = [os.path.join(raiz, f) for f in otros if slug(os.path.splitext(f)[0]).startswith(pref)]
+        r["ignorados"] = [f"{rel}/{f}" for f in otros if not slug(os.path.splitext(f)[0]).startswith(pref)]
+        out[(slug(nombre), pos)] = r
     return out
+
+
+def buscar_radares(idx, posicion, *claves):
+    """Primero los de esa posición; si no hay, los que no tienen posición."""
+    for pos in (posicion, None):
+        for k in claves:
+            if k and (slug(k), pos) in idx:
+                return idx[(slug(k), pos)]
+    return {}
 
 
 def buscar(idx, *claves):
@@ -503,7 +532,7 @@ def main():
                 rep["sin_mapa"].append(nom_x)
 
             radares = []
-            rr = buscar(idx_radares, *claves) or {}
+            rr = buscar_radares(idx_radares, posicion, *claves)
             for f in rr.get("ignorados", []):
                 rep["radar_ignorado"].append(f"{nom_x}: {f}")
             # orden en la ficha: jugador, promedio (siempre 2o), vs...
@@ -511,18 +540,18 @@ def main():
                 + ([("promedio", rr["promedio"])] if rr.get("promedio") else []) \
                 + [(f"vs{k + 1}", s) for k, s in enumerate(rr.get("vs", []))]
             if not rr:
-                rep["sin_radar"].append(f"{nom_x}: no hay carpeta de radares")
+                rep["sin_radar"].append(f"[{posicion}] {nom_x}: no hay carpeta de radares")
             else:
                 for tipo, nombre in (("jugador", "jugador.png"), ("promedio", "promedio.png")):
                     if not rr.get(tipo):
-                        rep["sin_radar"].append(f"{nom_x}: falta {nombre}")
+                        rep["sin_radar"].append(f"[{posicion}] {nom_x}: falta {nombre}")
             maxr = cfg("MAX_RADARES", 4)
             if len(fuentes) > maxr:
                 rep["radar_extra"].append(f"{nom_x}: {len(fuentes)} radares, se usan {maxr}; se ignoraron "
                                           + ", ".join(os.path.basename(s) for _, s in fuentes[maxr:]))
                 fuentes = fuentes[:maxr]
             for tipo, src in fuentes:
-                dst = f"img/radares/{pid}_{tipo}.png"
+                dst = f"img/radares/{pid}_{slug(posicion)}_{tipo}.png"
                 if dst not in usados:
                     procesar_radar(src, os.path.join(DOCS, dst))
                 usados.add(dst)
