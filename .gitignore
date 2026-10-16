@@ -9,3 +9,11 @@ __pycache__/
 .env
 reporte_build.txt
 config_local.py
+
+# Guía interna (se queda solo en la compu)
+GUIA_FICHAS.pdf
+
+# GitHub Actions (descarga de Drive)
+datos_drive/
+gdrive_key.json
+*.json.key

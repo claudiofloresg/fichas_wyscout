@@ -1,0 +1,66 @@
+# Actualiza la página leyendo directo de Google Drive (sin actualizar.bat).
+# Solo corre cuando alguien lo pide: GitHub -> pestaña Actions -> "Actualizar fichas" -> Run workflow
+# (también desde el celular).
+name: Actualizar fichas
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-fichas
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: America/Mexico_City
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt google-api-python-client google-auth
+
+      - name: Bajar data_fichas de Google Drive
+        env:
+          GDRIVE_KEY: ${{ secrets.GDRIVE_KEY }}
+        run: |
+          printf '%s' "$GDRIVE_KEY" > gdrive_key.json
+          python descargar_drive.py
+          rm -f gdrive_key.json
+
+      - name: Generar la página
+        run: python build.py
+
+      - name: Guardar reporte
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte_build
+          path: reporte_build.txt
+          if-no-files-found: ignore
+
+      - name: Publicar (solo si cambió algo)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          # la fecha de "generado" y el ?v= cambian siempre: no cuentan como cambio
+          quitar='s/"generado":"[^"]*"//'
+          if git diff --cached --quiet -- . ':(exclude)docs/index.html' ':(exclude)docs/data/fichas.js' \
+             && [ "$(git show HEAD:docs/data/fichas.js 2>/dev/null | sed "$quitar")" = "$(sed "$quitar" docs/data/fichas.js)" ]; then
+            echo "Sin cambios en los datos; no se publica."
+            exit 0
+          fi
+          git commit -m "Actualización automática desde Drive $(date '+%d/%m/%Y %H:%M')"
+          git pull --rebase -X theirs
+          git push
