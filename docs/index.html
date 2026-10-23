@@ -105,12 +105,32 @@
   #frmPin input{width:100%;font:inherit;font-size:20px;letter-spacing:.3em;text-align:center;padding:10px;border:1px solid var(--line);border-radius:6px;}
   body.bloqueada main, body.bloqueada header .meta{visibility:hidden;}
   @media (max-width:860px){ .campos{grid-template-columns:1fr;} .campos .ancho{grid-column:auto;} .fila-acc .msg{flex-basis:100%;} .fila-acc button{flex:1;} }
+  /* ---- celular / tablet: todo en una columna y la página hace scroll normal ---- */
   @media (max-width:860px){
-    main{grid-template-columns:1fr;}
-    aside{border-right:0;border-bottom:1px solid var(--line);}
-    ul#lista{max-height:45vh;flex:none;}
-    .frame{min-height:70vh;}
+    html,body{height:auto;min-height:100%;}
+    body{display:block;}
+    header{padding:10px 14px;gap:10px;}
+    header img{height:34px;}
+    header h1{font-size:15px;}
+    header .sub{font-size:10px;}
+    header button.hdr{margin-left:0;order:3;flex:1;}
+    header .meta{order:4;margin-left:auto;}
+    main{display:block;min-height:0;}
+    aside{border-right:0;border-bottom:1px solid var(--line);min-height:0;}
+    .filters{padding:12px 14px;}
+    ul#lista{max-height:40vh;flex:none;}
+    section.visor{display:block;padding:14px;min-height:0;}
+    section.visor > * + *{margin-top:12px;}
+    .toolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    .toolbar > div:first-child{grid-column:1 / -1;}
+    .toolbar h2{font-size:17px;}
+    .toolbar .sp{display:none;}
+    .toolbar label.chk{grid-column:1 / -1;order:1;}
+    .toolbar button{width:100%;padding:10px 8px;}
+    .toolbar #btnPdf{grid-column:1 / -1;order:2;}
+    .toolbar #btnVer{order:3;} .toolbar #btnEquipo{order:4;}
     .drops{grid-template-columns:1fr;}
+    .frame{height:auto;min-height:0;aspect-ratio:11 / 8.5;}
   }
 </style>
 </head>
