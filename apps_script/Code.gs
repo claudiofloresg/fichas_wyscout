@@ -14,7 +14,7 @@ const REPO = 'claudiofloresg/fichas_wyscout';
 const WORKFLOW = 'actualizar.yml';
 const RAMA = 'main';
 const PAGINA = 'https://claudiofloresg.github.io/fichas_wyscout/';
-const ENCABEZADOS = ['ID', 'Liga', 'Posición', 'Nombre completo', 'Comparar con 1', 'Comparar con 2', 'Agregado por', 'Fecha'];
+const ENCABEZADOS = ['ID', 'Liga', 'Posición', 'Nombre completo', 'Comparar con 1', 'Comparar con 2', 'Fecha'];
 const MAX_FALLOS = 8;            // PIN incorrecto: después de 8 intentos se bloquea 15 minutos
 
 // ============================================================ página → hoja
@@ -36,10 +36,12 @@ function doPost(e) {
   try {
     switch (req.accion) {
       case 'verificar': return json_({ ok: true });
-      case 'lista': return json_({ ok: true, filas: leerFilas_() });
+      case 'lista': return json_({ ok: true, filas: leerFilas_(), pendiente: pendiente_() });
       case 'agregar': return json_(agregar_(req));
       case 'quitar': return json_(quitar_(req));
-      case 'publicar': publicar_(); return json_({ ok: true });
+      case 'publicar':
+        if (!leerFilas_().length) throw new Error('La lista está vacía: no hay nada que publicar.');
+        publicar_(); return json_({ ok: true });
       case 'estado': return json_({ ok: true, run: estado_() });
       default: return json_({ ok: false, error: 'Acción desconocida' });
     }
@@ -74,26 +76,27 @@ function leerFilas_() {
   if (sh.getLastRow() < 2) return [];
   return sh.getRange(2, 1, sh.getLastRow() - 1, ENCABEZADOS.length).getDisplayValues()
     .filter((r) => r[0])
-    .map((r) => ({ id: r[0], liga: r[1], posicion: r[2], nombre: r[3], comp1: r[4], comp2: r[5], quien: r[6], fecha: r[7] }));
+    .map((r) => ({ id: r[0], liga: r[1], posicion: r[2], nombre: r[3], comp1: r[4], comp2: r[5], fecha: r[6] }));
 }
 
 function agregar_(d) {
   const f = {
     id: limpio_(d.id), liga: limpio_(d.liga), posicion: limpio_(d.posicion), nombre: limpio_(d.nombre),
-    comp1: limpio_(d.comp1), comp2: limpio_(d.comp2), quien: limpio_(d.quien, 40),
+    comp1: limpio_(d.comp1), comp2: limpio_(d.comp2),
   };
   if (!f.id || !f.liga || !f.posicion || !f.nombre || !f.comp1) throw new Error('Faltan campos obligatorios.');
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
     const sh = hoja_();
-    const fila = [f.id, f.liga, f.posicion, f.nombre, f.comp1, f.comp2, f.quien,
+    const fila = [f.id, f.liga, f.posicion, f.nombre, f.comp1, f.comp2,
       Utilities.formatDate(new Date(), 'America/Mexico_City', 'dd/MM/yyyy HH:mm')];
     const k = clave_(f.id, f.liga, f.posicion);
     const datos = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues() : [];
     const i = datos.findIndex((r) => clave_(r[0], r[1], r[2]) === k);
     const rango = i >= 0 ? sh.getRange(i + 2, 1, 1, fila.length) : sh.getRange(sh.getLastRow() + 1, 1, 1, fila.length);
     rango.setNumberFormat('@').setValues([fila]);
+    marcarPendiente_(true);
     return { ok: true, nuevo: i < 0, filas: leerFilas_() };
   } finally {
     lock.releaseLock();
@@ -110,6 +113,7 @@ function quitar_(d) {
     for (let i = datos.length - 1; i >= 0; i--) {
       if (clave_(datos[i][0], datos[i][1], datos[i][2]) === k) sh.deleteRow(i + 2);
     }
+    marcarPendiente_(true);
     return { ok: true, filas: leerFilas_() };
   } finally {
     lock.releaseLock();
@@ -136,7 +140,13 @@ function github_(metodo, ruta, cuerpo) {
 
 function publicar_() {
   github_('post', '/actions/workflows/' + WORKFLOW + '/dispatches', { ref: RAMA });
+  marcarPendiente_(false);
 }
+
+// "Hay cambios sin publicar": se prende al agregar/quitar (o editar la hoja a mano) y se apaga al publicar
+function marcarPendiente_(v) { PropertiesService.getScriptProperties().setProperty('PENDIENTE', v ? '1' : '0'); }
+function pendiente_() { return PropertiesService.getScriptProperties().getProperty('PENDIENTE') === '1'; }
+function onEdit() { marcarPendiente_(true); }
 
 function estado_() {
   const r = github_('get', '/actions/workflows/' + WORKFLOW + '/runs?per_page=1');
@@ -157,6 +167,7 @@ function onOpen() {
 
 function menuPublicar() {
   const ui = SpreadsheetApp.getUi();
+  if (!leerFilas_().length) { ui.alert('La lista está vacía: no hay nada que publicar.'); return; }
   if (ui.alert('Publicar fichas', 'Se publican todas las fichas de esta hoja. Tarda de 2 a 5 minutos.', ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
   publicar_();
   ui.alert('Listo', 'Se mandó a publicar. En unos minutos se ve en ' + PAGINA, ui.ButtonSet.OK);

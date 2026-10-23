@@ -15,8 +15,6 @@
   };
   const guardar = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) { /* sin storage */ } };
   const leer = (k) => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
-  const guardarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sin storage */ } };
-  const leerLocal = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 
   let pin = leer('pinFichas');
 
@@ -87,9 +85,9 @@
 
   const dlg = $('dlgNueva'), frm = $('frmNueva'), msg = $('msgNueva');
   const selLiga = $('nLiga'), txtId = $('nId'), dl = $('nIds'), selPosN = $('nPos'), txtNom = $('nNombre');
-  const selC1 = $('nComp1'), selC2 = $('nComp2'), txtQuien = $('nQuien');
+  const selC1 = $('nComp1'), selC2 = $('nComp2');
   const tbody = $('tblLista'), cuenta = $('nCuenta'), btnPub = $('btnPublicar'), estado = $('nEstado');
-  let idsLiga = new Set(), filas = [];
+  let idsLiga = new Set(), filas = [], pendiente = false;
 
   const opt = (v, t) => el('option', { value: v }, t ?? v);
 
@@ -100,7 +98,6 @@
     const pumas = OP.pumas.map(([n, p]) => opt(n, p ? `${n} (${p})` : n));
     selC1.replaceChildren(opt('', '— elige —'), ...pumas.map((o) => o.cloneNode(true)));
     selC2.replaceChildren(opt('', '— ninguno —'), ...pumas.map((o) => o.cloneNode(true)));
-    txtQuien.value = leerLocal('quienFichas') || '';
   }
 
   function llenarIds() {
@@ -130,13 +127,15 @@
       td.append(bE, bX); tr.appendChild(td);
       tbody.appendChild(tr);
     });
-    cuenta.textContent = `${filas.length} ficha${filas.length === 1 ? '' : 's'} en la lista`;
+    cuenta.textContent = `${filas.length} ficha${filas.length === 1 ? '' : 's'} en la lista`
+      + (filas.length ? (pendiente ? ' · hay cambios sin publicar' : ' · todo publicado') : '');
+    botonPublicar();
     if (!filas.length) { const tr = el('tr'); tr.appendChild(el('td', { colspan: 5, class: 'vacio' }, 'La lista está vacía.')); tbody.appendChild(tr); }
   }
 
   async function cargarLista() {
     cuenta.textContent = 'Cargando lista…';
-    try { filas = (await api('lista')).filas || []; pintarFilas(); } catch (e) { cuenta.textContent = e.message; }
+    try { const r = await api('lista'); filas = r.filas || []; pendiente = !!r.pendiente; pintarFilas(); } catch (e) { cuenta.textContent = e.message; }
   }
 
   function editar(f) {
@@ -149,17 +148,18 @@
 
   async function quitar(f) {
     if (!confirm(`¿Quitar a ${f.id} (${f.posicion}) de la lista?\nSu ficha desaparece de la página en la próxima publicación.`)) return;
-    try { filas = (await api('quitar', { id: f.id, liga: f.liga, posicion: f.posicion })).filas; pintarFilas(); } catch (e) { alert(e.message); }
+    try { filas = (await api('quitar', { id: f.id, liga: f.liga, posicion: f.posicion })).filas; pendiente = true; pintarFilas(); } catch (e) { alert(e.message); }
   }
 
   // ------------------------------------------------------------------ abrir
   btnNueva.addEventListener('click', async () => {
+    if (btnNueva.classList.contains('ok')) { location.reload(); return; }   // "Ver fichas nuevas"
     if (!(await conPin())) return;
     try { await cargarOpciones(); } catch (e) { alert(e.message); return; }
     if (!selLiga.options.length) llenarSelects();
     dlg.showModal();
     cargarLista();
-    revisarEstado(false);
+    if (!corriendo) revisarEstado(false);
   });
   $('btnCerrarNueva').addEventListener('click', () => dlg.close());
   selLiga.addEventListener('change', () => { txtId.value = ''; llenarIds(); });
@@ -169,16 +169,15 @@
     ev.preventDefault();
     const d = {
       id: txtId.value.trim(), liga: selLiga.value, posicion: selPosN.value, nombre: txtNom.value.trim(),
-      comp1: selC1.value, comp2: selC2.value, quien: txtQuien.value.trim(),
+      comp1: selC1.value, comp2: selC2.value,
     };
     if (!d.liga || !d.id || !d.posicion || !d.nombre || !d.comp1) { msg.textContent = 'Faltan campos obligatorios (*).'; return; }
     if (d.comp2 && d.comp2 === d.comp1) { msg.textContent = '“Comparar con 2” no puede ser el mismo que el 1.'; return; }
     if (!idsLiga.has(d.id) && !confirm(`“${d.id}” no aparece en ${d.liga} de la base de datos que tiene la página.\n¿Agregarlo de todos modos?`)) return;
-    guardarLocal('quienFichas', d.quien);
     msg.textContent = 'Guardando…';
     try {
       const r = await api('agregar', d);
-      filas = r.filas; pintarFilas();
+      filas = r.filas; pendiente = true; pintarFilas();
       msg.textContent = `${r.nuevo ? 'Agregado' : 'Actualizado'}: ${d.id}. Cuando termines, “Publicar fichas”.`;
       txtId.value = ''; txtNom.value = ''; selC2.value = '';
       txtId.focus();
@@ -186,60 +185,100 @@
   });
 
   // ------------------------------------------------------------------ publicar + estado
-  let timer = null, generadoAntes = (window.FICHAS || {}).generado, esperaPagina = 0;
+  // El estado se ve dentro de la ventana y en el botón del encabezado, así se puede cerrar la ventana
+  // y seguir usando la página mientras GitHub genera las fichas.
+  let timer = null, corriendo = false, esperaPagina = 0;
+  let generadoAntes = leer('generadoAntes') || (window.FICHAS || {}).generado;
   const textoEstado = { queued: 'En cola…', in_progress: 'Generando fichas y radares…', waiting: 'En espera…', requested: 'En cola…', pending: 'En cola…' };
+
+  function botonPublicar() {
+    btnPub.disabled = corriendo || !filas.length;
+    btnPub.textContent = pendiente || !filas.length ? '⬆ Publicar fichas' : '⬆ Publicar de nuevo';
+    btnPub.title = !filas.length ? 'La lista está vacía' : '';
+  }
+
+  function encabezado(clase, texto) {
+    btnNueva.className = 'hdr' + (clase ? ' ' + clase : '');
+    btnNueva.textContent = texto || '＋ Nueva ficha';
+  }
+
+  function ponerEstado(clase, partes) {
+    estado.className = 'estado' + (clase ? ' ' + clase : '');
+    estado.replaceChildren(...partes);
+  }
 
   async function revisarEstado(seguir = true) {
     try {
       const r = await api('estado');
-      if (!r.run) { estado.textContent = ''; return; }
+      if (!r.run) { ponerEstado('', []); return; }
       const fecha = new Date(r.run.creado).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
       if (r.run.status !== 'completed') {
-        estado.className = 'estado corre';
-        estado.textContent = `${textoEstado[r.run.status] || r.run.status} (iniciada ${fecha})`;
-        btnPub.disabled = true;
+        corriendo = true; botonPublicar();
+        guardar('publicando', '1');
+        ponerEstado('corre', [`${textoEstado[r.run.status] || r.run.status} (iniciada ${fecha})`]);
+        encabezado('corre', '⏳ Publicando…');
         programar(15000);
         return;
       }
-      btnPub.disabled = false;
+      corriendo = false; botonPublicar();
       if (r.run.conclusion !== 'success') {
-        estado.className = 'estado mal';
-        estado.innerHTML = '';
-        estado.append(`La publicación del ${fecha} falló. `, Object.assign(el('a', { href: r.run.url, target: '_blank', rel: 'noopener' }, 'Ver detalle')));
+        guardar('publicando', null);
+        ponerEstado('mal', [`La publicación del ${fecha} falló. `, el('a', { href: r.run.url, target: '_blank', rel: 'noopener' }, 'Ver detalle')]);
+        encabezado('mal', '⚠ Falló la publicación');
+        setTimeout(() => encabezado(), 20000);
         return;
       }
-      if (!seguir) { estado.className = 'estado'; estado.textContent = `Última publicación: ${fecha}`; return; }
+      if (!seguir) { ponerEstado('', [`Última publicación: ${fecha}`]); return; }
       // terminó bien: esperar a que GitHub Pages sirva la versión nueva
       const txt = await (await fetch(`data/fichas.js?ts=${Date.now()}`, { cache: 'no-store' })).text();
       const g = (txt.match(/"generado":"([^"]*)"/) || [])[1];
       if (g && g !== generadoAntes) {
-        estado.className = 'estado ok';
-        estado.innerHTML = '';
-        const b = el('button', { type: 'button', class: 'primary' }, 'Recargar página');
+        guardar('publicando', null); guardar('generadoAntes', null);
+        if (g === (window.FICHAS || {}).generado) {          // esta pestaña ya tiene la versión nueva
+          ponerEstado('ok', [`Listo, ya está publicada (${g}).`]);
+          encabezado();
+          return;
+        }
+        const b = el('button', { type: 'button', class: 'primary' }, 'Ver fichas nuevas');
         b.addEventListener('click', () => location.reload());
-        estado.append(`Listo, ya está publicada (${g}). `, b);
+        ponerEstado('ok', [`Listo, ya está publicada (${g}). `, b]);
+        encabezado('ok', '✓ Ver fichas nuevas');
         return;
       }
       esperaPagina += 1;
-      estado.className = 'estado corre';
-      estado.textContent = esperaPagina > 16
-        ? 'Terminó, pero la página no cambió (quizá no había cambios en los datos). Revisa el reporte en GitHub si falta algo.'
-        : 'Terminó. Esperando a que la página se actualice (≈1 min)…';
-      if (esperaPagina <= 16) programar(15000);
-    } catch (e) { estado.className = 'estado mal'; estado.textContent = e.message; }
+      if (esperaPagina > 16) {
+        guardar('publicando', null);
+        ponerEstado('', ['Terminó, pero la página no cambió (no había cambios en los datos).']);
+        encabezado();
+        return;
+      }
+      ponerEstado('corre', ['Terminó. Esperando a que la página se actualice (≈1 min)…']);
+      encabezado('corre', '⏳ Casi listo…');
+      programar(15000);
+    } catch (e) { ponerEstado('mal', [e.message]); }
   }
   function programar(ms) { clearTimeout(timer); timer = setTimeout(() => revisarEstado(true), ms); }
 
   btnPub.addEventListener('click', async () => {
     if (!(await conPin())) return;
-    if (!confirm(`Se publicarán las ${filas.length} fichas de la lista.\nTarda de 2 a 5 minutos. ¿Continuar?`)) return;
-    btnPub.disabled = true;
-    estado.className = 'estado corre'; estado.textContent = 'Enviando…';
+    if (!filas.length) return;
+    const msgConf = pendiente
+      ? `Se publicarán las ${filas.length} fichas de la lista.\nTarda de 2 a 5 minutos y puedes seguir usando la página. ¿Continuar?`
+      : 'No hay cambios en la lista desde la última publicación.\nSolo sirve si subiste fotos, mapas o radares nuevos a Drive. ¿Publicar de todos modos?';
+    if (!confirm(msgConf)) return;
+    corriendo = true; botonPublicar();
+    ponerEstado('corre', ['Enviando…']);
     try {
       await api('publicar');
+      pendiente = false; pintarFilas();
       generadoAntes = (window.FICHAS || {}).generado; esperaPagina = 0;
-      estado.textContent = 'En cola…';
+      guardar('publicando', '1'); guardar('generadoAntes', generadoAntes);
+      ponerEstado('corre', ['En cola… (puedes cerrar esta ventana)']);
+      encabezado('corre', '⏳ Publicando…');
       programar(12000);
-    } catch (e) { estado.className = 'estado mal'; estado.textContent = e.message; btnPub.disabled = false; }
+    } catch (e) { corriendo = false; botonPublicar(); ponerEstado('mal', [e.message]); }
   });
+
+  // Si se recargó la página o se volvió a ella mientras publicaba, se sigue mostrando el avance
+  if (pin && leer('publicando')) revisarEstado(true);
 })();

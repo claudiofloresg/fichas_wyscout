@@ -356,5 +356,12 @@ const Informe = (() => {
     return ctx.doc.save();
   }
 
-  return { generar };
+  /** Baja de antemano las imágenes de un jugador (y el fondo) para que su vista previa salga rápido. */
+  function precargar(jug) {
+    bytes(D.fondo);
+    if (!jug) return;
+    [jug.foto, jug.mapa, ...(jug.radares || [])].forEach((u) => { if (u) bytes(u); });
+  }
+
+  return { generar, precargar };
 })();

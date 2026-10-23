@@ -56,6 +56,8 @@
       li.querySelector('.m').textContent = `${j.minutos.toLocaleString('es-MX')} min`;
       li.querySelector('.e').textContent = [j.equipo, j.liga, j.posWyscout].filter(Boolean).join(' · ');
       li.addEventListener('click', () => seleccionar(j));
+      li.addEventListener('pointerenter', () => Informe.precargar(j), { once: true });
+      li.addEventListener('touchstart', () => Informe.precargar(j), { once: true, passive: true });
       frag.appendChild(li);
     });
     lista.appendChild(frag);
@@ -223,4 +225,10 @@
   cargarPos();
   const pre = qs.get('j') && pos.jugadores.find((j) => j.id === qs.get('j'));
   if (pre) seleccionar(pre);
+  // la primera ficha tarda (se baja el fondo y se "calienta" el generador): se hace en segundo plano al abrir
+  else setTimeout(() => {
+    const j0 = (pos && pos.jugadores[0]) || null;
+    Informe.precargar(j0);
+    if (j0) generar([j0], true).catch(() => {});
+  }, 400);
 })();

@@ -74,6 +74,10 @@
   /* ---- nueva ficha (lista_fichas) ---- */
   header button.hdr{margin-left:auto;background:var(--gold);border-color:var(--gold);color:var(--navy);padding:8px 14px;}
   header button.hdr + .meta{margin-left:14px;}
+  header button.hdr.corre{background:#fff;border-color:#fff;}
+  header button.hdr.ok{background:#1E7B3A;border-color:#1E7B3A;color:#fff;}
+  header button.hdr.mal{background:#B42318;border-color:#B42318;color:#fff;}
+  .nota{font-size:11px;color:var(--ink-faint);}
   dialog{border:0;border-radius:10px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.35);width:calc(100vw - 32px);max-width:940px;color:var(--ink);}
   .dlg-body > *, .campos > div{min-width:0;}
   dialog::backdrop{background:rgba(12,42,78,.55);}
@@ -191,7 +195,6 @@
         <div class="ancho"><label for="nNombre">Nombre completo <span class="req">*</span></label><input id="nNombre" placeholder="Como sale en la ficha"></div>
         <div><label for="nComp1">Comparar con 1 <span class="req">*</span></label><select id="nComp1"></select></div>
         <div><label for="nComp2">Comparar con 2</label><select id="nComp2"></select></div>
-        <div><label for="nQuien">Quién agrega</label><input id="nQuien" placeholder="Tu nombre"></div>
       </div>
       <div class="fila-acc" style="margin-top:12px"><span class="msg" id="msgNueva"></span>
         <button class="primary" type="submit">＋ Agregar a la lista</button></div>
@@ -203,15 +206,24 @@
         <tbody id="tblLista"></tbody></table></div>
     </div>
     <div class="fila-acc"><span class="estado" id="nEstado"></span><span class="msg"></span>
-      <button class="primary" type="button" id="btnPublicar">⬆ Publicar fichas</button></div>
+      <button class="primary" type="button" id="btnPublicar" disabled>⬆ Publicar fichas</button></div>
+    <div class="nota">Publicar tarda de 2 a 5 minutos y sigue aunque cierres esta ventana o la página. El avance se ve en el botón de arriba.</div>
   </div>
 </dialog>
 
 <script src="vendor/pdf-lib.min.js"></script>
-<script src="data/fichas.js?v=20261023124742"></script>
-<script src="informe.js?v=20261023124742"></script>
-<script src="app.js?v=20261023124742"></script>
-<script src="config_web.js?v=20261023124742"></script>
-<script src="nueva.js?v=20261023124742"></script>
+<<<<<<< Updated upstream
+<script src="data/fichas.js?v=20261023130623"></script>
+<script src="informe.js?v=20261023130623"></script>
+<script src="app.js?v=20261023130623"></script>
+<script src="config_web.js?v=20261023130623"></script>
+<script src="nueva.js?v=20261023130623"></script>
+=======
+<script src="data/fichas.js?v=20261023130623"></script>
+<script src="informe.js?v=20261023130623"></script>
+<script src="app.js?v=20261023130623"></script>
+<script src="config_web.js?v=20261023130623"></script>
+<script src="nueva.js?v=20261023130623"></script>
+>>>>>>> Stashed changes
 </body>
 </html>

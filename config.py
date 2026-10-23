@@ -38,7 +38,7 @@ POSICIONES = [
     (["portero", "porteros", "arquero"],             "Portero"),
     (["central", "centrales", "defensa_central"],    "Defensa Central"),
     (["lateral", "laterales"],                       "Lateral"),
-    (["mediocampista", "medio", "medios", "volante"], "Contención"),
+    (["mediocampista", "medio", "medios", "volante"], "Mediocampista"),
     (["extremo", "extremos"],                        "Extremo"),
     (["delantero", "delanteros"],                    "Delantero"),
 ]
