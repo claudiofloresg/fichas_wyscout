@@ -602,6 +602,21 @@ def exportar_opciones(base):
           f"({os.path.getsize(OUT_OPCIONES) / 1024:.0f} KB)")
 
 
+def grupos_excel(rep):
+    """Excel por posición de CARPETA_EXCEL -> [(posición, DataFrame, archivo)]."""
+    out = []
+    for path in leer_carpeta(C.CARPETA_EXCEL):
+        posicion = posicion_de(os.path.splitext(os.path.basename(path))[0])
+        if posicion is None:
+            rep["sin_posicion"].append(os.path.basename(path))
+            print(f"  [aviso] {os.path.basename(path)}: no sé qué posición es (revisa POSICIONES en config.py); se omite")
+            continue
+        df = leer_excel(path)
+        if df is not None:
+            out.append((posicion, df, os.path.basename(path)))
+    return out
+
+
 def cargar_modulo_radares(rep):
     if not cfg("RADARES_AUTOMATICOS", True):
         return None
@@ -654,20 +669,26 @@ def main():
         filas = cargar_lista(ruta(arch_lista), rep)
         for posicion, df in grupos_lista(filas, base, rep).items():
             grupos.append((posicion, df, "lista_fichas"))
+        # Las fichas de los Excel por posición se conservan (si un jugador está en los dos, gana la lista)
+        if cfg("COMBINAR_EXCEL", True):
+            grupos += grupos_excel(rep)
+        # Protección: una lista vacía (o toda con errores) no borra las fichas que ya están publicadas
+        try:
+            previo = open(OUT_DATA, encoding="utf-8").read()
+        except OSError:
+            previo = ""
+        if not grupos and '"jugadores":[{' in previo and "--vacia" not in sys.argv:
+            print("[ALTO] La lista de fichas está vacía (o ningún renglón es válido) y la página ya tiene fichas.\n"
+                  "  No se publica para no borrarlas. Agrega jugadores a lista_fichas y vuelve a publicar.\n"
+                  "  Detalle de errores en reporte_build.txt. Para publicar vacía a propósito: python build.py --vacia")
+            with open(REPORTE, "w", encoding="utf-8") as f:
+                f.write("Lista vacía o sin renglones válidos; no se publicó.\n" + "".join(f"  - {x}\n" for x in rep["lista"]))
+            sys.exit(1)
     else:
-        excels = leer_carpeta(C.CARPETA_EXCEL)
-        if not excels:
+        grupos = grupos_excel(rep)
+        if not grupos:
             print(f"[ERROR] No hay archivos Excel en {ruta(C.CARPETA_EXCEL)}")
             sys.exit(1)
-        for path in excels:
-            posicion = posicion_de(os.path.splitext(os.path.basename(path))[0])
-            if posicion is None:
-                rep["sin_posicion"].append(os.path.basename(path))
-                print(f"  [aviso] {os.path.basename(path)}: no sé qué posición es (revisa POSICIONES en config.py); se omite")
-                continue
-            df = leer_excel(path)
-            if df is not None:
-                grupos.append((posicion, df, os.path.basename(path)))
     cache_path = os.path.join(OUT_IMG["radares"], ".cache_radares.json")
     try:
         cache = json.load(open(cache_path, encoding="utf-8"))
@@ -730,6 +751,8 @@ def main():
 
             radares = []
             ficha = df.at[i, "_ficha"] if "_ficha" in df.columns else None
+            if ficha and cfg("RADARES_MANUALES_PRIMERO", True) and buscar_radares(idx_radares, posicion, *claves):
+                ficha = None                                # ya tiene radares hechos a mano en Drive: se usan esos
             if ficha and mod_radares:                       # modo lista: radares automáticos
                 ficha = dict(ficha, clave_extra=[cfg("RADAR_LADO_MAX"), cfg("MAX_RADARES", 4)])
                 try:
@@ -764,7 +787,7 @@ def main():
                                           + ", ".join(os.path.basename(s) for _, s in fuentes[maxr:]))
                 fuentes = fuentes[:maxr]
             for tipo, src in fuentes:
-                dst = f"img/radares/{jid}_{slug(posicion)}_{tipo}.png"
+                dst = f"img/radares/{jid}_{slug(posicion)}_drive_{tipo}.png"   # distinto a los automáticos
                 if dst not in usados:
                     procesar_radar(src, os.path.join(DOCS, dst))
                 usados.add(dst)
@@ -841,7 +864,7 @@ def main():
     titulos = {
         "lista": "Problemas en la lista de fichas (hoja lista_fichas)",
         "sin_posicion": "Archivos que no se reconocen como posición (revisa POSICIONES en config.py)",
-        "repetidos": "Jugadores repetidos en el mismo archivo (se tomó el primero)",
+        "repetidos": "Jugadores repetidos en la misma posición (se tomó el primero; la lista gana sobre los Excel)",
         "columnas": "Columnas que pide config.py y no vienen en el Excel",
         "paises": "Países sin traducir (agrégalos en TRADUCCION_PAISES de config.py)",
         "sin_nombre": "Sin nombre completo (se usa el del Excel)",
