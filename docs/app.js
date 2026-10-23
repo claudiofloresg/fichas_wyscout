@@ -7,7 +7,10 @@
   const btnPdf = $('btnPdf'), btnEquipo = $('btnEquipo'), frame = $('preview'), empty = $('empty');
 
   if (!D || !D.posiciones || !D.posiciones.length) {
-    empty.textContent = 'No hay datos cargados. Corre actualizar.bat para generarlos.';
+    empty.textContent = D && D.modo === 'lista'
+      ? 'Todavía no hay fichas publicadas. Agrégalas con “＋ Nueva ficha” y luego “Publicar fichas”.'
+      : 'No hay datos cargados. Corre actualizar.bat para generarlos.';
+    if (D && D.generado) $('meta').innerHTML = `Datos actualizados<br><b>${D.generado}</b>`;
     return;
   }
   $('meta').innerHTML = `Datos actualizados<br><b>${D.generado}</b>`;
@@ -51,7 +54,7 @@
       li.innerHTML = `<span class="n"></span><span class="m"></span><span class="e"></span>`;
       li.querySelector('.n').textContent = j.nombre;
       li.querySelector('.m').textContent = `${j.minutos.toLocaleString('es-MX')} min`;
-      li.querySelector('.e').textContent = [j.equipo, j.posWyscout].filter(Boolean).join(' · ');
+      li.querySelector('.e').textContent = [j.equipo, j.liga, j.posWyscout].filter(Boolean).join(' · ');
       li.addEventListener('click', () => seleccionar(j));
       frag.appendChild(li);
     });

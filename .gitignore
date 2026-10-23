@@ -17,3 +17,4 @@ GUIA_FICHAS.pdf
 datos_drive/
 gdrive_key.json
 *.json.key
+config_auto.py

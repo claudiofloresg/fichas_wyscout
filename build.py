@@ -4,7 +4,14 @@ build.py — Excel Wyscout por posición + nombres + fotos + mapas + radares  ->
 ===============================================================================================
 Uso:   python build.py
 
-Flujo
+Hay dos modos (se elige solo):
+  A) LISTA (si existe ARCHIVO_LISTA, la hoja "lista_fichas" que se llena desde la página):
+     cada renglón = una ficha (ID | Liga | Posición | Nombre completo | Comparar con 1 | Comparar con 2).
+     Los datos se toman de ARCHIVO_BASE ("Data Wyscout 26-27.xlsx", una hoja por liga) y los radares
+     se generan solos con radares.py (si falla, se usan los de CARPETA_RADARES).
+  B) EXCEL POR POSICIÓN (el de siempre), si no hay lista:
+
+Flujo modo B
   1. Cada .xlsx de CARPETA_EXCEL es una POSICIÓN (delantero.xlsx, central.xlsx...).
      Cada fila del Excel es un jugador con ficha.
   2. El nombre que se imprime es el NOMBRE COMPLETO de CARPETA_NOMBRES
@@ -43,11 +50,21 @@ try:
     print("Usando rutas de config_local.py")
 except ImportError:
     pass
+# Rutas a lo que bajó descargar_drive.py (GitHub Actions o actualizar.bat con llave). Tampoco se sube.
+try:
+    import config_auto as _A
+    for _k in dir(_A):
+        if _k.isupper():
+            setattr(C, _k, getattr(_A, _k))
+    print("Usando datos bajados de Drive (config_auto.py)")
+except ImportError:
+    pass
 from paises import PAISES
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DOCS = os.path.join(BASE, "docs")
 OUT_DATA = os.path.join(DOCS, "data", "fichas.js")
+OUT_OPCIONES = os.path.join(DOCS, "data", "opciones.js")
 OUT_IMG = {k: os.path.join(DOCS, "img", k) for k in ("fotos", "mapas", "radares")}
 REPORTE = os.path.join(BASE, "reporte_build.txt")
 
@@ -256,6 +273,10 @@ def _quitar_fondo_liso(im):
 def procesar_radar(src, dst):
     if al_dia(src, dst):
         return
+    recortar_radar(src, dst)
+
+
+def recortar_radar(src, dst):
     im = ImageOps.exif_transpose(Image.open(src)).convert("RGBA")
     if np.asarray(im)[..., 3].min() >= 250:
         im = _quitar_fondo_liso(im)
@@ -458,14 +479,200 @@ def stats_de(df, i, posicion, faltan):
     return out
 
 
+# ============================================================================= modo LISTA
+LISTA_COLUMNAS = {            # columna de la hoja -> palabras con que se reconoce (sin acentos)
+    "id": ("id", "jugador wyscout", "player"),
+    "liga": ("liga",),
+    "posicion": ("posicion",),
+    "completo": ("nombre completo", "completo"),
+    "comp1": ("comparar con 1", "comparar 1", "comparar_con_1"),
+    "comp2": ("comparar con 2", "comparar 2", "comparar_con_2"),
+}
+
+
+def _id_y_equipo(texto):
+    """'A. Bertaccini (Anderlecht)' -> ('A. Bertaccini', 'Anderlecht'). Sirve para homónimos."""
+    t = re.sub(r"\s+", " ", str(texto)).strip()
+    m = re.match(r"^(.*?)\s*\(([^()]+)\)$", t)
+    return (m.group(1).strip(), m.group(2).strip()) if m else (t, None)
+
+
+def cargar_lista(path, rep):
+    df = pd.read_excel(path, sheet_name=0, dtype=object)
+    cols = {}
+    for c in df.columns:
+        s = slug(c).replace("_", " ")
+        for k, pals in LISTA_COLUMNAS.items():
+            if k not in cols and any(s == p or s.startswith(p) for p in pals):
+                cols[k] = c
+                break
+    for k in ("id", "liga", "posicion"):
+        if k not in cols:
+            rep["lista"].append(f"la hoja no tiene la columna '{k}' (encabezados: {', '.join(map(str, df.columns))})")
+            return []
+    filas, vistos = [], set()
+    for n, r in df.iterrows():
+        val = lambda k: None if k not in cols or es_vacio(r[cols[k]]) else re.sub(r"\s+", " ", str(r[cols[k]])).strip()  # noqa: E731
+        if not val("id"):
+            continue
+        f = {k: val(k) for k in LISTA_COLUMNAS}
+        f["renglon"] = n + 2
+        clave = (slug(f["id"]), slug(f["liga"] or ""), slug(f["posicion"] or ""))
+        if clave in vistos:
+            rep["lista"].append(f"renglón {f['renglon']}: {f['id']} ({f['posicion']}) está repetido; se usa el primero")
+            continue
+        vistos.add(clave)
+        filas.append(f)
+    print(f"  Lista de fichas: {os.path.basename(path)} — {len(filas)} fichas")
+    return filas
+
+
+def grupos_lista(filas, base, rep):
+    """Arma {posición: DataFrame} con la fila de la base de datos de cada ficha de la lista.
+    Columnas extra (no son stats): _completo, _liga, _ficha."""
+    ref = liga_referencia(base)
+    if not ref:
+        rep["lista"].append(f"la base de datos no tiene la hoja de referencia '{cfg('LIGA_REFERENCIA', 'Liga MX')}' "
+                            "(ponla igual que la hoja en LIGA_REFERENCIA de config.py)")
+    grupos = {}
+    for f in filas:
+        r = f"renglón {f['renglon']} ({f['id']})"
+        posicion = posicion_de(f["posicion"] or "")
+        if not posicion:
+            rep["lista"].append(f"{r}: no reconozco la posición '{f['posicion']}'")
+            continue
+        if not f["liga"]:
+            rep["lista"].append(f"{r}: falta la liga")
+            continue
+        liga = base.liga(f["liga"])
+        if not liga:
+            rep["lista"].append(f"{r}: la liga '{f['liga']}' no es una hoja de la base de datos")
+            continue
+        jugador, equipo = _id_y_equipo(f["id"])
+        fila = base.jugador(liga, jugador, equipo)
+        if fila is None:
+            rep["lista"].append(f"{r}: no está en la hoja '{liga}' de la base de datos")
+            continue
+        comparar = [c for c in (f["comp1"], f["comp2"]) if c]
+        if not f["comp1"]:
+            rep["lista"].append(f"{r}: falta 'Comparar con 1' (sale sin radar vs Pumas)")
+        if not f["completo"]:
+            rep["lista"].append(f"{r}: falta el nombre completo")
+        d = fila.to_dict()
+        d["_completo"] = f["completo"]
+        d["_liga"] = liga
+        d["_ficha"] = {"id": d[C.COL_JUGADOR], "equipo": d.get(C.COL_EQUIPO), "liga": liga, "posicion": posicion,
+                       "comparar": comparar, "liga_ref": ref or cfg("LIGA_REFERENCIA", "Liga MX"),
+                       "equipo_pumas": cfg("EQUIPO_PUMAS", "Pumas")}
+        grupos.setdefault(posicion, []).append(d)
+    return {p: pd.DataFrame(v).reset_index(drop=True) for p, v in grupos.items()}
+
+
+def liga_referencia(base):
+    """Hoja de la liga de referencia (LIGA_REFERENCIA). Si no está exacta y solo una hoja empieza así
+    ("Liga MX" -> "Liga MX 26-27"), se usa esa."""
+    nombre = cfg("LIGA_REFERENCIA", "Liga MX")
+    exacta = base.liga(nombre)
+    if exacta:
+        return exacta
+    cand = [h for h in base.hojas if slug(h).startswith(slug(nombre))]
+    return cand[0] if len(cand) == 1 else None
+
+
+def exportar_opciones(base):
+    """docs/data/opciones.js: lo que necesita el formulario "Nueva ficha" de la página."""
+    ref = liga_referencia(base)
+    pumas, jugadores = [], {}
+    for liga, df in base.hojas.items():
+        col_eq = C.COL_EQUIPO if C.COL_EQUIPO in df.columns else df.columns[1]
+        mins = pd.to_numeric(df.get(C.COL_MINUTOS), errors="coerce").fillna(0)
+        d = pd.DataFrame({"p": df[C.COL_JUGADOR], "e": df[col_eq].astype(str), "m": mins}).sort_values("m", ascending=False)
+        jugadores[liga] = [[p, e] for p, e in zip(d["p"], d["e"])]
+        if liga == ref:
+            es = d["e"].map(slug).str.contains(slug(cfg("EQUIPO_PUMAS", "Pumas")), regex=False)
+            pos = df[C.COL_POSICION_WYSCOUT].astype(str) if C.COL_POSICION_WYSCOUT in df.columns else pd.Series("", index=df.index)
+            pumas = [[p, pos.get(i, "")] for i, p in zip(d[es].index, d[es]["p"])]
+    data = {"ligas": list(base.hojas), "ligaRef": ref, "posiciones": [p for _, p in cfg("POSICIONES", [])],
+            "pumas": pumas, "jugadores": jugadores}
+    with open(OUT_OPCIONES, "w", encoding="utf-8") as f:
+        f.write("window.OPCIONES = ")
+        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+        f.write(";\n")
+    print(f"  Opciones del formulario: {len(data['ligas'])} ligas, {len(pumas)} jugadores de Pumas "
+          f"({os.path.getsize(OUT_OPCIONES) / 1024:.0f} KB)")
+
+
+def cargar_modulo_radares(rep):
+    if not cfg("RADARES_AUTOMATICOS", True):
+        return None
+    import radares
+    error = radares.disponible()
+    if error:
+        rep["lista"].append(f"no se pudieron generar radares automáticos ({error}); se usan los de la carpeta radar. "
+                            "Instala con: pip install mplsoccer highlight_text")
+        return None
+    radares.configurar(cfg)
+    return radares
+
+
 # ============================================================================= main
 def main():
-    excels = leer_carpeta(C.CARPETA_EXCEL)
-    if not excels:
-        print(f"[ERROR] No hay archivos Excel en {ruta(C.CARPETA_EXCEL)}")
-        sys.exit(1)
     for d in list(OUT_IMG.values()) + [os.path.dirname(OUT_DATA)]:
         os.makedirs(d, exist_ok=True)
+    rep = {k: [] for k in ("lista", "sin_posicion", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar", "radar_extra",
+                           "radar_ignorado", "paises", "columnas", "repetidos", "extra_sin_jugador")}
+
+    # ---- de dónde salen las fichas
+    arch_lista, arch_base = cfg("ARCHIVO_LISTA"), cfg("ARCHIVO_BASE")
+    base = mod_radares = None
+    grupos = []                                # [(posición, DataFrame, etiqueta del origen)]
+    if arch_lista and os.path.isfile(ruta(arch_lista)):
+        if not (arch_base and os.path.isfile(ruta(arch_base))):
+            print(f"[ERROR] Hay lista de fichas pero no encuentro la base de datos ARCHIVO_BASE = {arch_base}")
+            sys.exit(1)
+        modo = "lista"
+    else:
+        modo = "excel"
+        # Protección: si la página ya está hecha con la lista, no se pisa con los Excel viejos por accidente
+        try:
+            previo = open(OUT_DATA, encoding="utf-8").read(300)
+        except OSError:
+            previo = ""
+        if '"modo":"lista"' in previo and "--excel" not in sys.argv:
+            print("[ALTO] La página se arma con la lista de fichas (hoja lista_fichas) y aquí no la encuentro.\n"
+                  "  - Pon gdrive_key.json en esta carpeta para que actualizar.bat baje la lista de Drive, o\n"
+                  "  - publica desde la página (botón Publicar fichas).\n"
+                  "  Si de verdad quieres volver a los Excel por posición: python build.py --excel")
+            sys.exit(1)
+    if modo == "lista" or (arch_base and os.path.isfile(ruta(arch_base))):
+        import radares as R
+        mod_radares = cargar_modulo_radares(rep) if modo == "lista" else None
+        print(f"Base de datos: {os.path.basename(arch_base)}")
+        base = R.Base(ruta(arch_base))
+        exportar_opciones(base)
+    if modo == "lista":
+        filas = cargar_lista(ruta(arch_lista), rep)
+        for posicion, df in grupos_lista(filas, base, rep).items():
+            grupos.append((posicion, df, "lista_fichas"))
+    else:
+        excels = leer_carpeta(C.CARPETA_EXCEL)
+        if not excels:
+            print(f"[ERROR] No hay archivos Excel en {ruta(C.CARPETA_EXCEL)}")
+            sys.exit(1)
+        for path in excels:
+            posicion = posicion_de(os.path.splitext(os.path.basename(path))[0])
+            if posicion is None:
+                rep["sin_posicion"].append(os.path.basename(path))
+                print(f"  [aviso] {os.path.basename(path)}: no sé qué posición es (revisa POSICIONES en config.py); se omite")
+                continue
+            df = leer_excel(path)
+            if df is not None:
+                grupos.append((posicion, df, os.path.basename(path)))
+    cache_path = os.path.join(OUT_IMG["radares"], ".cache_radares.json")
+    try:
+        cache = json.load(open(cache_path, encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
 
     idx_fotos = indexar_imagenes(C.CARPETA_FOTOS)
     idx_mapas = indexar_imagenes(C.CARPETA_MAPAS)
@@ -475,35 +682,25 @@ def main():
     print(f"Fotos: {len(idx_fotos)}   Mapas: {len(idx_mapas)}   Carpetas de radares: {len(idx_radares)}   "
           f"Nombres completos: {len(nombres)}")
 
-    rep = {k: [] for k in ("sin_posicion", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar", "radar_extra", "radar_ignorado",
-                           "paises", "columnas", "repetidos", "extra_sin_jugador")}
     usados = set()
     orden_pos = [p for _, p in cfg("POSICIONES", [])]
     posiciones = {}
 
-    for path in excels:
-        stem = os.path.splitext(os.path.basename(path))[0]
-        posicion = posicion_de(stem)
-        if posicion is None:
-            rep["sin_posicion"].append(os.path.basename(path))
-            print(f"  [aviso] {os.path.basename(path)}: no sé qué posición es (revisa POSICIONES en config.py); se omite")
-            continue
-        df = leer_excel(path)
-        if df is None:
-            continue
+    for posicion, df, origen in grupos:
         df = pegar_extra(df, extra)
         if posicion not in cfg("ESTADISTICAS", {}):
             print(f"  [aviso] '{posicion}' no tiene catálogo en ESTADISTICAS; su cuadro sale vacío")
         col_eq = C.COL_EQUIPO if C.COL_EQUIPO in df.columns else df.columns[1]
         faltan = set()
         pos = posiciones.setdefault(posicion, {"id": slug(posicion), "label": posicion, "archivos": [], "jugadores": []})
-        pos["archivos"].append(os.path.basename(path))
-        print(f"\n== {posicion}  ({os.path.basename(path)}) — {len(df)} jugadores")
+        pos["archivos"].append(origen)
+        print(f"\n== {posicion}  ({origen}) — {len(df)} jugadores")
 
         for i in df.index:
             nom_x = re.sub(r"\s+", " ", str(df.at[i, C.COL_JUGADOR])).strip()
             equipo = None if es_vacio(df.at[i, col_eq]) else str(df.at[i, col_eq]).strip()
-            completo = nombres.get(slug(nom_x))
+            completo = (None if "_completo" not in df.columns or es_vacio(df.at[i, "_completo"])
+                        else str(df.at[i, "_completo"]).strip()) or nombres.get(slug(nom_x))
             if not completo:
                 rep["sin_nombre"].append(f"[{posicion}] {nom_x}")
             pid = slug(nom_x)
@@ -532,14 +729,30 @@ def main():
                 rep["sin_mapa"].append(nom_x)
 
             radares = []
-            rr = buscar_radares(idx_radares, posicion, *claves)
+            ficha = df.at[i, "_ficha"] if "_ficha" in df.columns else None
+            if ficha and mod_radares:                       # modo lista: radares automáticos
+                ficha = dict(ficha, clave_extra=[cfg("RADAR_LADO_MAX"), cfg("MAX_RADARES", 4)])
+                try:
+                    hechos, avisos = mod_radares.generar(base, ficha, OUT_IMG["radares"], f"{jid}_{slug(posicion)}", cache,
+                                                         procesar=lambda r: recortar_radar(r, r))
+                except Exception as e:                      # un radar malo no tumba todo
+                    hechos, avisos = [], [f"error al generar: {e}"]
+                for a in avisos:
+                    rep["sin_radar"].append(f"[{posicion}] {nom_x}: {a}")
+                for _, r in hechos[:cfg("MAX_RADARES", 4)]:
+                    dst = f"img/radares/{os.path.basename(r)}"
+                    usados.add(dst)
+                    radares.append(dst)
+            rr = {} if radares else buscar_radares(idx_radares, posicion, *claves)
             for f in rr.get("ignorados", []):
                 rep["radar_ignorado"].append(f"{nom_x}: {f}")
             # orden en la ficha: jugador, promedio (siempre 2o), vs...
             fuentes = ([("jugador", rr["jugador"])] if rr.get("jugador") else []) \
                 + ([("promedio", rr["promedio"])] if rr.get("promedio") else []) \
                 + [(f"vs{k + 1}", s) for k, s in enumerate(rr.get("vs", []))]
-            if not rr:
+            if radares:
+                pass
+            elif not rr:
                 rep["sin_radar"].append(f"[{posicion}] {nom_x}: no hay carpeta de radares")
             else:
                 for tipo, nombre in (("jugador", "jugador.png"), ("promedio", "promedio.png")):
@@ -551,7 +764,7 @@ def main():
                                           + ", ".join(os.path.basename(s) for _, s in fuentes[maxr:]))
                 fuentes = fuentes[:maxr]
             for tipo, src in fuentes:
-                dst = f"img/radares/{pid}_{slug(posicion)}_{tipo}.png"
+                dst = f"img/radares/{jid}_{slug(posicion)}_{tipo}.png"
                 if dst not in usados:
                     procesar_radar(src, os.path.join(DOCS, dst))
                 usados.add(dst)
@@ -567,6 +780,7 @@ def main():
             minutos = to_number(df.at[i, C.COL_MINUTOS]) if C.COL_MINUTOS in df.columns else np.nan
             pos["jugadores"].append({
                 "id": jid,
+                "liga": df.at[i, "_liga"] if "_liga" in df.columns else None,
                 "nombre": completo or nom_x,
                 "nombreExcel": nom_x,
                 "equipo": equipo,
@@ -583,7 +797,7 @@ def main():
                 "radares": radares,
             })
         for c in sorted(faltan):
-            rep["columnas"].append(f"[{os.path.basename(path)}] {c}")
+            rep["columnas"].append(f"[{origen}] {c}")
             print(f"  [aviso] columna que no viene en el Excel: {c}")
 
     todos = {slug(j["nombreExcel"]) for p in posiciones.values() for j in p["jugadores"]}
@@ -595,6 +809,11 @@ def main():
     for p in lista:
         p["jugadores"].sort(key=lambda j: slug(j["nombre"]))
 
+    # caché de radares: solo lo que sigue en uso
+    vivos = {os.path.basename(u).rsplit("_", 1)[0] for u in usados if u.startswith("img/radares/")}
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump({k: v for k, v in cache.items() if k in vivos}, f, indent=0, sort_keys=True)
+
     # borrar imágenes que ya no se usan
     for sub, d in OUT_IMG.items():
         for f in os.listdir(d):
@@ -603,6 +822,7 @@ def main():
 
     payload = {
         "generado": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "modo": modo,
         "posiciones": lista,
     }
     with open(OUT_DATA, "w", encoding="utf-8") as f:
@@ -613,12 +833,13 @@ def main():
     # Obliga al navegador a bajar la versión nueva de los .js (evita caché)
     idx = os.path.join(DOCS, "index.html")
     html = open(idx, encoding="utf-8").read()
-    html = re.sub(r'src="((?:data/fichas|informe|app)\.js)(?:\?v=\d+)?"',
+    html = re.sub(r'src="((?:data/fichas|config_web|informe|app|nueva)\.js)(?:\?v=\d+)?"',
                   lambda m: f'src="{m.group(1)}?v={datetime.now():%Y%m%d%H%M%S}"', html)
     with open(idx, "w", encoding="utf-8") as f:
         f.write(html)
 
     titulos = {
+        "lista": "Problemas en la lista de fichas (hoja lista_fichas)",
         "sin_posicion": "Archivos que no se reconocen como posición (revisa POSICIONES en config.py)",
         "repetidos": "Jugadores repetidos en el mismo archivo (se tomó el primero)",
         "columnas": "Columnas que pide config.py y no vienen en el Excel",
@@ -638,9 +859,10 @@ def main():
             f.write(f"\n=== {t}: {len(items)}\n" + "".join(f"  - {x}\n" for x in items))
 
     n = sum(len(p["jugadores"]) for p in lista)
-    print(f"\nListo -> {os.path.relpath(OUT_DATA, BASE)}  ({n} fichas en {len(lista)} posiciones, "
+    print(f"\nModo: {'lista de fichas' if modo == 'lista' else 'Excel por posición'}")
+    print(f"Listo -> {os.path.relpath(OUT_DATA, BASE)}  ({n} fichas en {len(lista)} posiciones, "
           f"{os.path.getsize(OUT_DATA) / 1024:.0f} KB)")
-    for k in ("sin_posicion", "columnas", "paises", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar"):
+    for k in ("lista", "sin_posicion", "columnas", "paises", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar"):
         if rep[k]:
             print(f"  {titulos[k].split(' (')[0]}: {len(set(rep[k]))}")
     print("  Detalle en reporte_build.txt")

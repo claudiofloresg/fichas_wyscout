@@ -4,6 +4,12 @@ set -e
 cd "$(dirname "$0")"
 echo "== 0/2 Bajando la última versión de GitHub =="
 git pull --rebase --autostash
+if [ -f gdrive_key.json ]; then
+  echo "== Bajando datos de Google Drive =="
+  python3 descargar_drive.py
+else
+  rm -f config_auto.py
+fi
 echo "== 1/2 Generando datos de la página =="
 python3 build.py
 echo ""

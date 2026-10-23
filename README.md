@@ -55,3 +55,16 @@ Hasta 16 stats = 4 columnas; más de 16 = 5 columnas.
 
 Primera vez (GitHub Pages): igual que en FB — `pip install -r requirements.txt`, `git init`, `git remote add origin ...`,
 `actualizar.bat`, y en GitHub **Settings → Pages → main / docs**.
+
+## Lista de fichas (modo automático)
+
+1. En la página: **＋ Nueva ficha** (pide PIN) → ID, Liga, Posición, Nombre completo, Comparar con 1 (y 2) → **Agregar a la lista**.
+   Se guarda en la hoja de Google `lista_fichas` (carpeta `data_fichas`).
+2. **Publicar fichas** → Apps Script dispara el workflow *Actualizar fichas* → `descargar_drive.py` baja `data_fichas`
+   y la base `Data Wyscout 26-27` → `build.py` toma los datos de la base y `radares.py` genera los radares → se publica.
+3. Fotos y mapas siguen en `data_fichas/fotos` y `data_fichas/mapas` (nombre tal cual Wyscout).
+
+- `apps_script/Code.gs`: código del Apps Script (PIN y token de GitHub van en sus propiedades, nunca aquí).
+- `docs/config_web.js`: URL del Apps Script y si se pide PIN al entrar.
+- Radares: solo se recalculan si cambian los datos de esa liga o la fila de la lista (`docs/img/radares/.cache_radares.json`).
+- Si no hay lista, todo funciona como antes (Excel por posición).

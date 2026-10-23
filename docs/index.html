@@ -71,6 +71,36 @@
   .drop.lleno .x{display:block;}
   .drop.vid{cursor:default;flex-direction:column;align-items:stretch;gap:4px;}
   .drop.vid input{width:100%;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;}
+  /* ---- nueva ficha (lista_fichas) ---- */
+  header button.hdr{margin-left:auto;background:var(--gold);border-color:var(--gold);color:var(--navy);padding:8px 14px;}
+  header button.hdr + .meta{margin-left:14px;}
+  dialog{border:0;border-radius:10px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.35);width:calc(100vw - 32px);max-width:940px;color:var(--ink);}
+  .dlg-body > *, .campos > div{min-width:0;}
+  dialog::backdrop{background:rgba(12,42,78,.55);}
+  dialog.chico{max-width:340px;}
+  .dlg-head{display:flex;align-items:center;gap:10px;background:var(--navy);color:#fff;padding:12px 18px;border-bottom:3px solid var(--gold);}
+  .dlg-head h3{margin:0;font-size:15px;text-transform:uppercase;letter-spacing:.04em;flex:1;}
+  .dlg-head button{background:none;border:0;color:#fff;font-size:18px;padding:2px 6px;}
+  .dlg-body{padding:16px 18px;display:grid;gap:14px;max-height:calc(100vh - 120px);overflow:auto;}
+  .campos{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 12px;}
+  .campos input,.campos select{width:100%;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;}
+  .campos .ancho{grid-column:span 2;}
+  .fila-acc{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .fila-acc .msg{font-size:12px;color:var(--ink-soft);flex:1;}
+  table.lista{width:100%;border-collapse:collapse;font-size:13px;}
+  table.lista th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+  table.lista td{padding:6px 8px;border-bottom:1px solid #EFF0ED;}
+  table.lista td.acc{white-space:nowrap;text-align:right;}
+  table.lista td.acc button{padding:3px 8px;font-size:12px;margin-left:4px;}
+  table.lista td.vacio{color:var(--ink-faint);text-align:center;padding:14px;}
+  .tabla-wrap{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px;}
+  .estado{font-size:13px;color:var(--ink-soft);}
+  .estado.corre{color:var(--navy);} .estado.ok{color:#1E7B3A;font-weight:700;} .estado.mal{color:#B42318;}
+  .estado button{margin-left:8px;padding:6px 12px;}
+  .req{color:#B42318;}
+  #frmPin input{width:100%;font:inherit;font-size:20px;letter-spacing:.3em;text-align:center;padding:10px;border:1px solid var(--line);border-radius:6px;}
+  body.bloqueada main, body.bloqueada header .meta{visibility:hidden;}
+  @media (max-width:860px){ .campos{grid-template-columns:1fr;} .campos .ancho{grid-column:auto;} .fila-acc .msg{flex-basis:100%;} .fila-acc button{flex:1;} }
   @media (max-width:860px){
     main{grid-template-columns:1fr;}
     aside{border-right:0;border-bottom:1px solid var(--line);}
@@ -116,7 +146,7 @@
       <button id="btnEquipo" disabled>⬇ PDF de todos</button>
     </div>
     <div class="extras off" id="extras">
-      <div class="extras-head">Agregar solo para esta descarga</div>
+      <div class="extras-head">Agregar solo para esta descarga<span>No se guarda: lo permanente se sube a Drive y se publica con actualizar.bat.</span></div>
       <div class="drops">
         <label class="drop" data-tipo="foto"><input type="file" accept="image/*">
           <span class="mini"></span><span class="txt"><span class="dt">Foto</span><span class="dd">Arrastra o haz clic</span></span>
@@ -136,9 +166,58 @@
   </section>
 </main>
 
+
+<dialog id="dlgPin" class="chico">
+  <form id="frmPin">
+    <div class="dlg-head"><h3>PIN</h3></div>
+    <div class="dlg-body">
+      <input type="password" id="txtPin" inputmode="numeric" autocomplete="current-password" aria-label="PIN">
+      <div class="status" id="msgPin"></div>
+      <div class="fila-acc"><span class="msg"></span>
+        <button type="button" id="btnPinCancelar">Cancelar</button><button class="primary" type="submit">Entrar</button></div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgNueva">
+  <div class="dlg-head"><h3>Nueva ficha</h3><button type="button" id="btnCerrarNueva" title="Cerrar">✕</button></div>
+  <div class="dlg-body">
+    <form id="frmNueva" autocomplete="off">
+      <div class="campos">
+        <div><label for="nLiga">Liga <span class="req">*</span></label><select id="nLiga"></select></div>
+        <div class="ancho"><label for="nId">ID (nombre en Wyscout) <span class="req">*</span></label>
+          <input id="nId" list="nIds" placeholder="Primero elige la liga"><datalist id="nIds"></datalist></div>
+        <div><label for="nPos">Posición <span class="req">*</span></label><select id="nPos"></select></div>
+        <div class="ancho"><label for="nNombre">Nombre completo <span class="req">*</span></label><input id="nNombre" placeholder="Como sale en la ficha"></div>
+        <div><label for="nComp1">Comparar con 1 <span class="req">*</span></label><select id="nComp1"></select></div>
+        <div><label for="nComp2">Comparar con 2</label><select id="nComp2"></select></div>
+        <div><label for="nQuien">Quién agrega</label><input id="nQuien" placeholder="Tu nombre"></div>
+      </div>
+      <div class="fila-acc" style="margin-top:12px"><span class="msg" id="msgNueva"></span>
+        <button class="primary" type="submit">＋ Agregar a la lista</button></div>
+    </form>
+    <div>
+      <div class="fila-acc" style="margin-bottom:6px"><span class="msg" id="nCuenta"></span></div>
+      <div class="tabla-wrap"><table class="lista">
+        <thead><tr><th>ID</th><th>Liga</th><th>Posición</th><th>Comparar con</th><th></th></tr></thead>
+        <tbody id="tblLista"></tbody></table></div>
+    </div>
+    <div class="fila-acc"><span class="estado" id="nEstado"></span><span class="msg"></span>
+      <button class="primary" type="button" id="btnPublicar">⬆ Publicar fichas</button></div>
+  </div>
+</dialog>
+
 <script src="vendor/pdf-lib.min.js"></script>
-<script src="data/fichas.js?v=20261022132239"></script>
-<script src="informe.js?v=20261022132239"></script>
-<script src="app.js?v=20261022132239"></script>
+<<<<<<< Updated upstream
+<script src="data/fichas.js?v=20261023113638"></script>
+<script src="informe.js?v=20261023113638"></script>
+<script src="app.js?v=20261023113638"></script>
+=======
+<script src="data/fichas.js?v=20261023113638"></script>
+<script src="informe.js?v=20261023113638"></script>
+<script src="app.js?v=20261023113638"></script>
+<script src="config_web.js?v=20261023113638"></script>
+<script src="nueva.js?v=20261023113638"></script>
+>>>>>>> Stashed changes
 </body>
 </html>
