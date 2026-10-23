@@ -19,10 +19,20 @@
   let pin = leer('pinFichas');
 
   // ------------------------------------------------------------------ API
-  async function api(accion, datos = {}) {
-    const r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, pin, ...datos }) });
-    if (!r.ok) throw new Error(`El servidor respondió ${r.status}`);
-    const j = await r.json();
+  async function api(accion, datos = {}, intentos = 3) {
+    let r;
+    for (let k = 1; ; k++) {
+      try {
+        r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, pin, ...datos }) });
+        if (r.ok) break;
+        if (k >= intentos) throw new Error(`El servidor respondió ${r.status}`);
+      } catch (e) {                      // "Failed to fetch": Google tardó o se cortó la conexión -> reintenta
+        if (k >= intentos) throw new Error('No hubo respuesta del servidor (revisa tu internet e intenta de nuevo).');
+      }
+      await new Promise((ok) => setTimeout(ok, 1500 * k));
+    }
+    let j;
+    try { j = await r.json(); } catch (e) { throw new Error('Respuesta inválida del servidor. Intenta de nuevo.'); }
     if (j.pin === false) { pin = null; guardar('pinFichas', null); }
     if (!j.ok) throw new Error(j.error || 'Error desconocido');
     return j;
@@ -255,7 +265,15 @@
       ponerEstado('corre', ['Terminó. Esperando a que la página se actualice (≈1 min)…']);
       encabezado('corre', '⏳ Casi listo…');
       programar(15000);
-    } catch (e) { ponerEstado('mal', [e.message]); }
+    } catch (e) {
+      // un error al consultar NO detiene la publicación (corre en GitHub): se sigue revisando
+      if (corriendo || leer('publicando')) {
+        ponerEstado('corre', ['Sin respuesta del servidor; reintentando… (la publicación sigue corriendo)']);
+        programar(20000);
+      } else {
+        ponerEstado('mal', [e.message]);
+      }
+    }
   }
   function programar(ms) { clearTimeout(timer); timer = setTimeout(() => revisarEstado(true), ms); }
 
@@ -269,7 +287,15 @@
     corriendo = true; botonPublicar();
     ponerEstado('corre', ['Enviando…']);
     try {
-      await api('publicar');
+      try {
+        await api('publicar', {}, 1);           // sin reintentos: podría mandarse dos veces
+      } catch (e) {
+        if (!/respuesta del servidor/.test(e.message)) throw e;
+        // se cortó la conexión: quizá sí se mandó. Se revisa en GitHub antes de dar error.
+        await new Promise((ok) => setTimeout(ok, 4000));
+        const r = await api('estado');
+        if (!r.run || r.run.status === 'completed') throw e;
+      }
       pendiente = false; pintarFilas();
       generadoAntes = (window.FICHAS || {}).generado; esperaPagina = 0;
       guardar('publicando', '1'); guardar('generadoAntes', generadoAntes);
