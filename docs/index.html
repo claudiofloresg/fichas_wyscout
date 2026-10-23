@@ -212,18 +212,18 @@
 </dialog>
 
 <script src="vendor/pdf-lib.min.js"></script>
-<<<<<<< Updated upstream
-<script src="data/fichas.js?v=20261023130623"></script>
-<script src="informe.js?v=20261023130623"></script>
-<script src="app.js?v=20261023130623"></script>
-<script src="config_web.js?v=20261023130623"></script>
-<script src="nueva.js?v=20261023130623"></script>
-=======
-<script src="data/fichas.js?v=20261023130623"></script>
-<script src="informe.js?v=20261023130623"></script>
-<script src="app.js?v=20261023130623"></script>
-<script src="config_web.js?v=20261023130623"></script>
-<script src="nueva.js?v=20261023130623"></script>
->>>>>>> Stashed changes
+<script>
+  // Siempre la versión más nueva de los datos y del código (sin tocar este archivo en cada actualización).
+  // async=false: se ejecutan en este orden.
+  (function () {
+    var v = Date.now();
+    ['data/fichas.js', 'informe.js', 'app.js', 'config_web.js', 'nueva.js'].forEach(function (f) {
+      var s = document.createElement('script');
+      s.src = f + '?v=' + v;
+      s.async = false;
+      document.body.appendChild(s);
+    });
+  })();
+</script>
 </body>
 </html>

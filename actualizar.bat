@@ -2,8 +2,12 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 echo == 0/3 Bajando la ultima version de GitHub ==
-git pull --rebase --autostash
+rem Primero se guardan tus cambios locales (asi git no los mezcla con marcas de conflicto)
+git add -A
+git diff --cached --quiet || git commit -q -m "Cambios locales %date% %time%"
+git pull --rebase -X theirs
 if errorlevel 1 (
+  git rebase --abort >nul 2>&1
   echo.
   echo No se pudo bajar la ultima version. Revisa el mensaje de arriba.
   pause

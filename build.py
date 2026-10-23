@@ -853,13 +853,7 @@ def main():
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\n")
 
-    # Obliga al navegador a bajar la versión nueva de los .js (evita caché)
-    idx = os.path.join(DOCS, "index.html")
-    html = open(idx, encoding="utf-8").read()
-    html = re.sub(r'src="((?:data/fichas|config_web|informe|app|nueva)\.js)(?:\?v=\d+)?"',
-                  lambda m: f'src="{m.group(1)}?v={datetime.now():%Y%m%d%H%M%S}"', html)
-    with open(idx, "w", encoding="utf-8") as f:
-        f.write(html)
+    # (index.html ya no se modifica: carga los .js con ?v=<hora> él solo; así no hay conflictos de git)
 
     titulos = {
         "lista": "Problemas en la lista de fichas (hoja lista_fichas)",

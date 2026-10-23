@@ -3,7 +3,9 @@
 set -e
 cd "$(dirname "$0")"
 echo "== 0/2 Bajando la última versión de GitHub =="
-git pull --rebase --autostash
+git add -A
+git diff --cached --quiet || git commit -q -m "Cambios locales $(date '+%d/%m/%Y %H:%M')"
+git pull --rebase -X theirs
 if [ -f gdrive_key.json ]; then
   echo "== Bajando datos de Google Drive =="
   python3 descargar_drive.py
