@@ -51,9 +51,15 @@ def disponible():
     return None
 
 
-VERSION = "radares-1"          # súbelo si cambias cálculos o estilo: fuerza a regenerar todos
+VERSION = "radares-2"          # súbelo si cambias cálculos o estilo: fuerza a regenerar todos
 
 CREDITO = 'Elaborado por Inteligencia Deportiva "Pumas"'
+# Factor de nivel de liga (solo radares contra Liga MX). La clave se busca dentro del nombre de la hoja
+# (sin acentos ni mayúsculas): "u21" vale para "Liga MX U21" y "Liga MX U21 - 2526". Las demás ligas = 1.
+FACTOR_LIGA = {"u21": 0.8, "expansion": 0.8}
+# Métricas que NO se ajustan: porcentajes y las de portero donde menos es mejor
+SIN_AJUSTE = ("%", "against", "conceded", "prevented", "clean sheets")
+
 MIN_MINUTOS_TOTALES = 1000
 MIN_MINUTOS_PROMEDIO = 50
 DPI = 200
@@ -235,7 +241,8 @@ METRICAS_POR_POSICION = {'Portero': ['Conceded goals per 90',
 
 def configurar(cfg):
     """Permite sobreescribir constantes desde config.py (RADAR_MIN_MINUTOS, RADAR_CREDITO, ...)."""
-    global MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, CREDITO, DPI
+    global MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, CREDITO, DPI, FACTOR_LIGA
+    FACTOR_LIGA = dict(cfg("FACTOR_LIGA", FACTOR_LIGA) or {})
     MIN_MINUTOS_TOTALES = cfg("RADAR_MIN_MINUTOS", MIN_MINUTOS_TOTALES)
     MIN_MINUTOS_PROMEDIO = cfg("RADAR_MIN_MINUTOS_PARTIDO", MIN_MINUTOS_PROMEDIO)
     CREDITO = cfg("RADAR_CREDITO", CREDITO)
@@ -355,6 +362,34 @@ def _valor(fila, m):
     return np.nan if pd.isna(v) else float(v)
 
 
+def factor_liga(liga):
+    s = _slug(liga)
+    for k, v in FACTOR_LIGA.items():
+        if _slug(k) and _slug(k) in s:
+            return float(v)
+    return 1.0
+
+
+def _ajustable(m):
+    return not any(x in m.lower() for x in SIN_AJUSTE)
+
+
+def _ajustar(df, metricas, f):
+    """Copia de df con las métricas ajustables multiplicadas por el factor de la liga."""
+    if f == 1:
+        return df
+    df = df.copy()
+    for m in metricas:
+        if m in df.columns and _ajustable(m):
+            df[m] = pd.to_numeric(df[m], errors="coerce") * f
+    return df
+
+
+def _nota_ajuste(*ligas):
+    partes = [f"{l} ×{factor_liga(l):g}" for l in dict.fromkeys(ligas) if factor_liga(l) != 1]
+    return ("Ajuste por nivel de liga (métricas por 90): " + ", ".join(partes)) if partes else None
+
+
 # ============================================================================= dibujo (idéntico al notebook)
 def _colores_por_tercios(n):
     base = ["#1A78CF", "#FF9300", "#D70232"]
@@ -385,9 +420,9 @@ def _pizza_comparativa(nombres, v1, v2, titulo, subtitulo, nota=None):
     fig.text(0.515, 0.945, subtitulo, size=14, ha="center", fontproperties=FONT_BOLD, color="#000000")
     pie_y = 0.02
     if nota:
-        fig.text(0.99, pie_y, nota, size=8, fontproperties=FONT_ITALIC, color="#000000", ha="right")
-        pie_y += 0.015
-    fig.text(0.99, pie_y, CREDITO, size=9, fontproperties=FONT_ITALIC, color="#000000", ha="right")
+        fig.text(0.99, pie_y, nota, size=8, fontproperties=FONT_ITALIC, color="#000000", ha="right", va="bottom")
+        pie_y += 0.015 * (nota.count("\n") + 1)
+    fig.text(0.99, pie_y, CREDITO, size=9, fontproperties=FONT_ITALIC, color="#000000", ha="right", va="bottom")
     return fig
 
 
@@ -434,7 +469,8 @@ def radar_individual(base, fila, liga, pos_radar, ruta):
 def radar_vs_referencia(base, fila, liga, liga_ref, pos_radar, ruta):
     metricas = METRICAS_POR_POSICION[pos_radar]
     nombres = [NOMBRES_DISPLAY.get(m, m) for m in metricas]
-    ref = base.poblacion(liga_ref, pos_radar)
+    ref = _ajustar(base.poblacion(liga_ref, pos_radar), metricas, factor_liga(liga_ref))
+    fila = _ajustar(fila.to_frame().T, metricas, factor_liga(liga)).iloc[0]
     valores = []
     for m in metricas:
         dist = pd.to_numeric(ref[m], errors="coerce").dropna() if m in ref.columns else pd.Series(dtype=float)
@@ -442,6 +478,8 @@ def radar_vs_referencia(base, fila, liga, liga_ref, pos_radar, ruta):
         p = 50 if len(dist) == 0 or np.isnan(v) else (dist < v).mean() * 100
         valores.append(int(round(p, 0)))
     nota = f"Muestra de referencia: >{MIN_MINUTOS_TOTALES} min totales y >{MIN_MINUTOS_PROMEDIO} min/partido"
+    if _nota_ajuste(liga, liga_ref):
+        nota = _nota_ajuste(liga, liga_ref) + "\n" + nota
     fig = _pizza_comparativa(nombres, valores, [50] * len(metricas),
                              f"<{fila['Player']}> vs <Promedio {liga_ref}>",
                              f"{liga} vs Distribución {liga_ref} | {pos_radar}", nota=nota)
@@ -451,8 +489,12 @@ def radar_vs_referencia(base, fila, liga, liga_ref, pos_radar, ruta):
 def radar_comparativo(base, fila1, liga1, fila2, liga2, pos_radar, ruta):
     metricas = METRICAS_POR_POSICION[pos_radar]
     nombres = [NOMBRES_DISPLAY.get(m, m) for m in metricas]
-    glob = pd.concat([_con_jugador(base.poblacion(liga1, pos_radar), fila1),
-                      _con_jugador(base.poblacion(liga2, pos_radar), fila2)], ignore_index=True)
+    # cada liga con su factor (la muestra completa y el jugador, para que el promedio también se ajuste)
+    f1, f2 = factor_liga(liga1), factor_liga(liga2)
+    glob = pd.concat([_ajustar(_con_jugador(base.poblacion(liga1, pos_radar), fila1), metricas, f1),
+                      _ajustar(_con_jugador(base.poblacion(liga2, pos_radar), fila2), metricas, f2)], ignore_index=True)
+    fila1 = _ajustar(fila1.to_frame().T, metricas, f1).iloc[0]
+    fila2 = _ajustar(fila2.to_frame().T, metricas, f2).iloc[0]
     cols = [m for m in metricas if m in glob.columns]
     num = glob[cols].apply(pd.to_numeric, errors="coerce")
     media, std = num.mean(), num.std().replace(0, 1)
@@ -467,7 +509,7 @@ def radar_comparativo(base, fila1, liga1, fila2, liga2, pos_radar, ruta):
 
     fig = _pizza_comparativa(nombres, escala(fila1), escala(fila2),
                              f"<{fila1['Player']}> vs <{fila2['Player']}>",
-                             f"{liga1} vs {liga2} | {pos_radar}")
+                             f"{liga1} vs {liga2} | {pos_radar}", nota=_nota_ajuste(liga1, liga2))
     _guardar(fig, ruta)
 
 
@@ -499,7 +541,7 @@ def generar(base, ficha, carpeta, prefijo, cache, procesar=None):
     if error:
         return [], [f"no se pueden dibujar radares: {error}"]
     clave = hashlib.sha1(json.dumps([
-        ficha.get("clave_extra"), VERSION, CREDITO, MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, DPI, METRICAS_POR_POSICION[pos_radar],
+        ficha.get("clave_extra"), VERSION, FACTOR_LIGA, list(SIN_AJUSTE), CREDITO, MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, DPI, METRICAS_POR_POSICION[pos_radar],
         ficha["id"], liga, liga_ref, pos_radar, [str(r["Player"]) for r in rivales],
         base.huella(liga), base.huella(liga_ref),
     ], default=str).encode()).hexdigest()
