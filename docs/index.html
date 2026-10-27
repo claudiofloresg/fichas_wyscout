@@ -96,6 +96,9 @@
   table.lista td{padding:6px 8px;border-bottom:1px solid #EFF0ED;}
   table.lista td.acc{white-space:nowrap;text-align:right;}
   table.lista td.acc button{padding:3px 8px;font-size:12px;margin-left:4px;}
+  table.lista tr.conaviso td{background:#FFF4E5;}
+  table.lista tr.aviso td{background:#FFF4E5;color:#9A5B00;font-size:12px;padding-top:0;}
+  table.lista tr.editando td{background:var(--gold-soft);}
   table.lista td.vacio{color:var(--ink-faint);text-align:center;padding:14px;}
   .tabla-wrap{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px;}
   .estado{font-size:13px;color:var(--ink-soft);}
@@ -213,8 +216,12 @@
           <input id="nId" list="nIds" placeholder="Primero elige la liga"><datalist id="nIds"></datalist></div>
         <div><label for="nPos">Posición <span class="req">*</span></label><select id="nPos"></select></div>
         <div class="ancho"><label for="nNombre">Nombre completo <span class="req">*</span></label><input id="nNombre" placeholder="Como sale en la ficha"></div>
-        <div><label for="nComp1">Comparar con 1 <span class="req">*</span></label><select id="nComp1"></select></div>
-        <div><label for="nComp2">Comparar con 2</label><select id="nComp2"></select></div>
+        <div><label for="nLigaC1">Liga comparar 1 <span class="req">*</span></label><select id="nLigaC1"></select></div>
+        <div class="ancho"><label for="nComp1">Comparar con 1 <span class="req">*</span></label>
+          <input id="nComp1" list="nIdsC1" placeholder="Escribe para buscar"><datalist id="nIdsC1"></datalist></div>
+        <div><label for="nLigaC2">Liga comparar 2</label><select id="nLigaC2"></select></div>
+        <div class="ancho"><label for="nComp2">Comparar con 2</label>
+          <input id="nComp2" list="nIdsC2" placeholder="Opcional"><datalist id="nIdsC2"></datalist></div>
       </div>
       <div class="fila-acc" style="margin-top:12px"><span class="msg" id="msgNueva"></span>
         <button class="primary" type="submit">＋ Agregar a la lista</button></div>

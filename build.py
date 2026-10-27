@@ -481,6 +481,8 @@ def stats_de(df, i, posicion, faltan):
 
 # ============================================================================= modo LISTA
 LISTA_COLUMNAS = {            # columna de la hoja -> palabras con que se reconoce (sin acentos)
+    "ligac1": ("liga comparar 1", "liga comparar con 1", "liga comp 1"),
+    "ligac2": ("liga comparar 2", "liga comparar con 2", "liga comp 2"),
     "id": ("id", "jugador wyscout", "player"),
     "liga": ("liga",),
     "posicion": ("posicion",),
@@ -527,9 +529,19 @@ def cargar_lista(path, rep):
     return filas
 
 
+def clave_lista(id_, liga, posicion):
+    """Misma clave que usan la página y el Apps Script para identificar un renglón de la lista."""
+    n = lambda t: re.sub(r"\s+", " ", unicodedata.normalize("NFKD", str(t or "")).encode("ascii", "ignore")  # noqa: E731
+                         .decode().lower()).strip()
+    return "|".join((n(id_), n(liga), n(posicion)))
+
+
 def grupos_lista(filas, base, rep):
     """Arma {posición: DataFrame} con la fila de la base de datos de cada ficha de la lista.
-    Columnas extra (no son stats): _completo, _liga, _ficha."""
+    Columnas extra (no son stats): _completo, _liga, _ficha.
+    Los problemas de cada renglón quedan en rep["_avisos"][clave] para mostrarlos en la página."""
+    import difflib
+    avisos = rep.setdefault("_avisos", {})
     ref = liga_referencia(base)
     if not ref:
         rep["lista"].append(f"la base de datos no tiene la hoja de referencia '{cfg('LIGA_REFERENCIA', 'Liga MX')}' "
@@ -537,33 +549,46 @@ def grupos_lista(filas, base, rep):
     grupos = {}
     for f in filas:
         r = f"renglón {f['renglon']} ({f['id']})"
+        clave = clave_lista(f["id"], f["liga"], f["posicion"])
+
+        def aviso(texto, clave=clave, r=r):
+            rep["lista"].append(f"{r}: {texto}")
+            avisos.setdefault(clave, []).append(texto)
+
         posicion = posicion_de(f["posicion"] or "")
         if not posicion:
-            rep["lista"].append(f"{r}: no reconozco la posición '{f['posicion']}'")
+            aviso(f"no reconozco la posición '{f['posicion']}'")
             continue
         if not f["liga"]:
-            rep["lista"].append(f"{r}: falta la liga")
+            aviso("falta la liga")
             continue
         liga = base.liga(f["liga"])
         if not liga:
-            rep["lista"].append(f"{r}: la liga '{f['liga']}' no es una hoja de la base de datos")
+            aviso(f"la liga '{f['liga']}' no es una hoja de la base de datos")
             continue
         jugador, equipo = _id_y_equipo(f["id"])
         fila = base.jugador(liga, jugador, equipo)
         if fila is None:
-            rep["lista"].append(f"{r}: no está en la hoja '{liga}' de la base de datos")
+            nombres = base.hojas[liga][C.COL_JUGADOR].astype(str).tolist()
+            por_slug = {slug(x): x for x in nombres}
+            cerca = [por_slug[x] for x in difflib.get_close_matches(slug(jugador), list(por_slug), n=3, cutoff=0.6)]
+            aviso(f"no está en {liga}" + (f" — ¿quisiste decir {' / '.join(cerca)}?" if cerca else ""))
             continue
-        comparar = [c for c in (f["comp1"], f["comp2"]) if c]
+        comparar = []                          # cualquier jugador de cualquier liga (vacía = liga de referencia)
+        for c, lc in ((f["comp1"], f["ligac1"]), (f["comp2"], f["ligac2"])):
+            if c:
+                nom, eq = _id_y_equipo(c)
+                comparar.append({"id": nom, "equipo": eq, "liga": lc})
         if not f["comp1"]:
-            rep["lista"].append(f"{r}: falta 'Comparar con 1' (sale sin radar vs Pumas)")
+            aviso("falta 'Comparar con 1' (sale sin radar vs Pumas)")
         if not f["completo"]:
-            rep["lista"].append(f"{r}: falta el nombre completo")
+            aviso("falta el nombre completo")
         d = fila.to_dict()
         d["_completo"] = f["completo"]
         d["_liga"] = liga
         d["_ficha"] = {"id": d[C.COL_JUGADOR], "equipo": d.get(C.COL_EQUIPO), "liga": liga, "posicion": posicion,
                        "comparar": comparar, "liga_ref": ref or cfg("LIGA_REFERENCIA", "Liga MX"),
-                       "equipo_pumas": cfg("EQUIPO_PUMAS", "Pumas")}
+                       "equipo_pumas": cfg("EQUIPO_PUMAS", "Pumas"), "clave_lista": clave}
         grupos.setdefault(posicion, []).append(d)
     return {p: pd.DataFrame(v).reset_index(drop=True) for p, v in grupos.items()}
 
@@ -579,6 +604,11 @@ def liga_referencia(base):
     return cand[0] if len(cand) == 1 else None
 
 
+def _txt(v):
+    """Texto limpio para el formulario: celdas vacías (NaN) -> ''."""
+    return "" if es_vacio(v) else re.sub(r"\s+", " ", str(v)).strip()
+
+
 def exportar_opciones(base):
     """docs/data/opciones.js: lo que necesita el formulario "Nueva ficha" de la página."""
     ref = liga_referencia(base)
@@ -586,17 +616,18 @@ def exportar_opciones(base):
     for liga, df in base.hojas.items():
         col_eq = C.COL_EQUIPO if C.COL_EQUIPO in df.columns else df.columns[1]
         mins = pd.to_numeric(df.get(C.COL_MINUTOS), errors="coerce").fillna(0)
-        d = pd.DataFrame({"p": df[C.COL_JUGADOR], "e": df[col_eq].astype(str), "m": mins}).sort_values("m", ascending=False)
+        d = pd.DataFrame({"p": df[C.COL_JUGADOR].map(_txt), "e": df[col_eq].map(_txt), "m": mins}).sort_values("m", ascending=False)
+        d = d[d["p"] != ""]
         jugadores[liga] = [[p, e] for p, e in zip(d["p"], d["e"])]
         if liga == ref:
             es = d["e"].map(slug).str.contains(slug(cfg("EQUIPO_PUMAS", "Pumas")), regex=False)
-            pos = df[C.COL_POSICION_WYSCOUT].astype(str) if C.COL_POSICION_WYSCOUT in df.columns else pd.Series("", index=df.index)
+            pos = df[C.COL_POSICION_WYSCOUT].map(_txt) if C.COL_POSICION_WYSCOUT in df.columns else pd.Series("", index=df.index)
             pumas = [[p, pos.get(i, "")] for i, p in zip(d[es].index, d[es]["p"])]
     data = {"ligas": list(base.hojas), "ligaRef": ref, "posiciones": [p for _, p in cfg("POSICIONES", [])],
             "pumas": pumas, "jugadores": jugadores}
     with open(OUT_OPCIONES, "w", encoding="utf-8") as f:
         f.write("window.OPCIONES = ")
-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+        json.dump(data, f, ensure_ascii=False, separators=(",", ":"), allow_nan=False)   # JSON válido (sin NaN)
         f.write(";\n")
     print(f"  Opciones del formulario: {len(data['ligas'])} ligas, {len(pumas)} jugadores de Pumas "
           f"({os.path.getsize(OUT_OPCIONES) / 1024:.0f} KB)")
@@ -762,6 +793,7 @@ def main():
                     hechos, avisos = [], [f"error al generar: {e}"]
                 for a in avisos:
                     rep["sin_radar"].append(f"[{posicion}] {nom_x}: {a}")
+                    rep.setdefault("_avisos", {}).setdefault(ficha.get("clave_lista", ""), []).append(a)
                 for _, r in hechos[:cfg("MAX_RADARES", 4)]:
                     dst = f"img/radares/{os.path.basename(r)}"
                     usados.add(dst)
@@ -847,6 +879,7 @@ def main():
         "generado": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "modo": modo,
         "posiciones": lista,
+        "avisosLista": rep.get("_avisos", {}),
     }
     with open(OUT_DATA, "w", encoding="utf-8") as f:
         f.write("window.FICHAS = ")

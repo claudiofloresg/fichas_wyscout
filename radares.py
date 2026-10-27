@@ -386,6 +386,8 @@ def _ajustar(df, metricas, f):
 
 
 def _nota_ajuste(*ligas):
+    if len({factor_liga(l) for l in ligas}) <= 1:      # mismo factor en ambas (p. ej. U21 vs U21): no cambia nada
+        return None
     partes = [f"{l} ×{factor_liga(l):g}" for l in dict.fromkeys(ligas) if factor_liga(l) != 1]
     return ("Ajuste por nivel de liga (métricas por 90): " + ", ".join(partes)) if partes else None
 
@@ -515,7 +517,8 @@ def radar_comparativo(base, fila1, liga1, fila2, liga2, pos_radar, ruta):
 
 # ============================================================================= orquestación con caché
 def generar(base, ficha, carpeta, prefijo, cache, procesar=None):
-    """ficha: dict con id, liga, posicion, comparar (lista de IDs Pumas), liga_ref, equipo_pumas.
+    """ficha: dict con id, liga, posicion, liga_ref, equipo_pumas y comparar: lista de
+    {"id", "equipo" (opcional), "liga" (opcional; vacía = liga de referencia)} o de textos (= jugador de la liga de referencia).
     Devuelve ([(tipo, ruta)], [avisos]). `procesar(ruta)` se aplica a cada PNG nuevo (recorte, tamaño)."""
     avisos = []
     pos_radar = posicion_radar(ficha["posicion"])
@@ -529,27 +532,33 @@ def generar(base, ficha, carpeta, prefijo, cache, procesar=None):
     fila = base.jugador(liga, ficha["id"], ficha.get("equipo"))
     if fila is None:
         return [], [f"'{ficha['id']}' no está en la hoja '{liga}'"]
-    rivales = []
-    for cid in ficha["comparar"]:
-        f2 = base.jugador(liga_ref, cid, ficha.get("equipo_pumas"))
+    rivales = []                                         # [(fila, hoja)]
+    for c in ficha["comparar"]:
+        c = {"id": c} if isinstance(c, str) else c
+        lc = base.liga(c["liga"]) if c.get("liga") else liga_ref
+        if not lc:
+            avisos.append(f"la liga '{c['liga']}' de 'comparar con {c['id']}' no es una hoja de la base de datos")
+            continue
+        pista = c.get("equipo") or (ficha.get("equipo_pumas") if lc == liga_ref else None)
+        f2 = base.jugador(lc, c["id"], pista)
         if f2 is None:
-            avisos.append(f"'{cid}' (comparar con) no está en '{liga_ref}'")
+            avisos.append(f"'{c['id']}' (comparar con) no está en '{lc}'")
         else:
-            rivales.append(f2)
+            rivales.append((f2, lc))
 
     error = disponible()
     if error:
         return [], [f"no se pueden dibujar radares: {error}"]
     clave = hashlib.sha1(json.dumps([
         ficha.get("clave_extra"), VERSION, FACTOR_LIGA, list(SIN_AJUSTE), CREDITO, MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, DPI, METRICAS_POR_POSICION[pos_radar],
-        ficha["id"], liga, liga_ref, pos_radar, [str(r["Player"]) for r in rivales],
-        base.huella(liga), base.huella(liga_ref),
+        ficha["id"], liga, liga_ref, pos_radar, [(str(r["Player"]), str(r["Team"]), lc) for r, lc in rivales],
+        base.huella(liga), base.huella(liga_ref), [base.huella(lc) for _, lc in rivales],
     ], default=str).encode()).hexdigest()
 
     salidas = [("jugador", lambda r: radar_individual(base, fila, liga, pos_radar, r)),
                ("promedio", lambda r: radar_vs_referencia(base, fila, liga, liga_ref, pos_radar, r))]
-    for k, f2 in enumerate(rivales, 1):
-        salidas.append((f"vs{k}", lambda r, f2=f2: radar_comparativo(base, fila, liga, f2, liga_ref, pos_radar, r)))
+    for k, (f2, lc) in enumerate(rivales, 1):
+        salidas.append((f"vs{k}", lambda r, f2=f2, lc=lc: radar_comparativo(base, fila, liga, f2, lc, pos_radar, r)))
 
     rutas = [(t, os.path.join(carpeta, f"{prefijo}_{t}.png")) for t, _ in salidas]
     if cache.get(prefijo) == clave and all(os.path.exists(r) for _, r in rutas):

@@ -95,9 +95,17 @@
 
   const dlg = $('dlgNueva'), frm = $('frmNueva'), msg = $('msgNueva');
   const selLiga = $('nLiga'), txtId = $('nId'), dl = $('nIds'), selPosN = $('nPos'), txtNom = $('nNombre');
-  const selC1 = $('nComp1'), selC2 = $('nComp2');
+  const txtC1 = $('nComp1'), txtC2 = $('nComp2'), selLC1 = $('nLigaC1'), selLC2 = $('nLigaC2');
+  const idsComp = { 1: new Set(), 2: new Set() };
   const tbody = $('tblLista'), cuenta = $('nCuenta'), btnPub = $('btnPublicar'), estado = $('nEstado');
-  let idsLiga = new Set(), filas = [], pendiente = false;
+  let idsLiga = new Set(), filas = [], pendiente = false, editando = null;
+  const btnAgregar = frm.querySelector('button[type=submit]');
+  const btnCancelarEd = el('button', { type: 'button', style: 'display:none' }, 'Cancelar edición');
+  btnAgregar.parentNode.insertBefore(btnCancelarEd, btnAgregar);
+  // problemas de cada renglón en la última publicación (ID que no está en la liga, etc.)
+  const AVISOS = (window.FICHAS || {}).avisosLista || {};
+  const clave = (id, liga, pos) => [id, liga, pos].map((t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x00-\x7f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()).join('|');
 
   const opt = (v, t) => el('option', { value: v }, t ?? v);
 
@@ -105,10 +113,33 @@
     selLiga.replaceChildren(opt('', '— elige —'), ...OP.ligas.filter((l) => l !== OP.ligaRef).map((l) => opt(l)),
       ...(OP.ligaRef ? [opt(OP.ligaRef)] : []));
     selPosN.replaceChildren(opt('', '— elige —'), ...OP.posiciones.map((p) => opt(p)));
-    const pumas = OP.pumas.map(([n, p]) => opt(n, p ? `${n} (${p})` : n));
-    selC1.replaceChildren(opt('', '— elige —'), ...pumas.map((o) => o.cloneNode(true)));
-    selC2.replaceChildren(opt('', '— ninguno —'), ...pumas.map((o) => o.cloneNode(true)));
+    [selLC1, selLC2].forEach((sel) => {
+      sel.replaceChildren(...(OP.ligaRef ? [opt(OP.ligaRef)] : []), ...OP.ligas.filter((l) => l !== OP.ligaRef).map((l) => opt(l)));
+      sel.value = OP.ligaRef || OP.ligas[0];
+    });
+    llenarComp(1); llenarComp(2);
   }
+
+  // "Comparar con": cualquier jugador de la liga elegida. En la liga de referencia salen primero los de Pumas.
+  function llenarComp(i) {
+    const liga = (i === 1 ? selLC1 : selLC2).value;
+    const js = OP.jugadores[liga] || [];
+    const veces = {};
+    js.forEach(([n]) => { veces[n] = (veces[n] || 0) + 1; });
+    const valor = ([n, e]) => (veces[n] > 1 ? `${n} (${e})` : n);
+    let lista = js;
+    if (liga === OP.ligaRef && OP.pumas.length) {
+      const esPumas = new Set(OP.pumas.map(([n]) => n));
+      lista = [...js.filter(([n]) => esPumas.has(n)), ...js.filter(([n]) => !esPumas.has(n))];
+    }
+    const pos = Object.fromEntries(OP.pumas.map(([n, p]) => [n, p]));
+    idsComp[i] = new Set(lista.map(valor));
+    $(i === 1 ? 'nIdsC1' : 'nIdsC2').replaceChildren(...lista.map((j) => opt(valor(j),
+      liga === OP.ligaRef && pos[j[0]] !== undefined ? `${j[1]} · ${pos[j[0]] || ''}` : j[1])));
+  }
+  selLC1.addEventListener('change', () => { txtC1.value = ''; llenarComp(1); });
+  selLC2.addEventListener('change', () => { txtC2.value = ''; llenarComp(2); });
+  const textoComp = (c, l) => (c ? c + (l && l !== OP.ligaRef ? ` (${l})` : '') : '');
 
   function llenarIds() {
     const js = (OP.jugadores[selLiga.value] || []);
@@ -128,7 +159,10 @@
     tbody.replaceChildren();
     filas.forEach((f) => {
       const tr = el('tr');
-      [f.id, f.liga, f.posicion, [f.comp1, f.comp2].filter(Boolean).join(', ')].forEach((t) => tr.appendChild(el('td', {}, t)));
+      const av = AVISOS[clave(f.id, f.liga, f.posicion)];
+      if (av) { tr.className = 'conaviso'; tr.title = av.join('\n'); }
+      if (editando && clave(editando.id, editando.liga, editando.posicion) === clave(f.id, f.liga, f.posicion)) tr.classList.add('editando');
+      [(av ? '⚠ ' : '') + f.id, f.liga, f.posicion, [textoComp(f.comp1, f.ligac1), textoComp(f.comp2, f.ligac2)].filter(Boolean).join(', ')].forEach((t) => tr.appendChild(el('td', {}, t)));
       const td = el('td', { class: 'acc' });
       const bE = el('button', { type: 'button', title: 'Editar' }, '✎');
       const bX = el('button', { type: 'button', title: 'Quitar de la lista' }, '✕');
@@ -136,6 +170,11 @@
       bX.addEventListener('click', () => quitar(f));
       td.append(bE, bX); tr.appendChild(td);
       tbody.appendChild(tr);
+      if (av) {                                       // explicación debajo del renglón
+        const t2 = el('tr', { class: 'aviso' });
+        t2.appendChild(el('td', { colspan: 5 }, `En la última publicación: ${av.join(' · ')}. Corrígelo con ✎ y vuelve a publicar.`));
+        tbody.appendChild(t2);
+      }
     });
     cuenta.textContent = `${filas.length} ficha${filas.length === 1 ? '' : 's'} en la lista`
       + (filas.length ? (pendiente ? ' · hay cambios sin publicar' : ' · todo publicado') : '');
@@ -149,12 +188,27 @@
   }
 
   function editar(f) {
+    editando = { id: f.id, liga: f.liga, posicion: f.posicion };
     selLiga.value = f.liga; llenarIds();
     txtId.value = f.id; selPosN.value = f.posicion; txtNom.value = f.nombre || '';
-    selC1.value = f.comp1 || ''; selC2.value = f.comp2 || '';
-    msg.textContent = 'Editando: al guardar se reemplaza ese renglón.';
+    selLC1.value = f.ligac1 || OP.ligaRef; llenarComp(1); txtC1.value = f.comp1 || '';
+    selLC2.value = f.ligac2 || OP.ligaRef; llenarComp(2); txtC2.value = f.comp2 || '';
+    msg.textContent = `Editando ${f.id}: corrige lo que sea (ID, liga, posición, nombre…) y da “Guardar cambios”.`;
+    btnAgregar.textContent = '✔ Guardar cambios';
+    btnCancelarEd.style.display = '';
+    pintarFilas();
     txtId.focus();
   }
+
+  function salirEdicion() {
+    editando = null;
+    btnAgregar.textContent = '＋ Agregar a la lista';
+    btnCancelarEd.style.display = 'none';
+    txtId.value = ''; txtNom.value = ''; txtC2.value = '';
+    if (OP && selLC2.value !== OP.ligaRef) { selLC2.value = OP.ligaRef; llenarComp(2); }
+    pintarFilas();
+  }
+  btnCancelarEd.addEventListener('click', () => { salirEdicion(); msg.textContent = ''; });
 
   async function quitar(f) {
     if (!confirm(`¿Quitar a ${f.id} (${f.posicion}) de la lista?\nSu ficha desaparece de la página en la próxima publicación.`)) return;
@@ -179,17 +233,22 @@
     ev.preventDefault();
     const d = {
       id: txtId.value.trim(), liga: selLiga.value, posicion: selPosN.value, nombre: txtNom.value.trim(),
-      comp1: selC1.value, comp2: selC2.value,
+      comp1: txtC1.value.trim(), comp2: txtC2.value.trim(), ligac1: selLC1.value, ligac2: selLC2.value,
     };
+    if (editando) d.original = editando;               // se reemplaza ese renglón aunque cambie el ID
     if (!d.liga || !d.id || !d.posicion || !d.nombre || !d.comp1) { msg.textContent = 'Faltan campos obligatorios (*).'; return; }
-    if (d.comp2 && d.comp2 === d.comp1) { msg.textContent = '“Comparar con 2” no puede ser el mismo que el 1.'; return; }
+    if (d.comp2 && d.comp2 === d.comp1 && d.ligac2 === d.ligac1) { msg.textContent = '“Comparar con 2” no puede ser el mismo que el 1.'; return; }
+    for (const [i, c, l] of [[1, d.comp1, d.ligac1], [2, d.comp2, d.ligac2]]) {
+      if (c && !idsComp[i].has(c) && !confirm(`“${c}” (comparar con ${i}) no aparece en ${l} de la base de datos.\n¿Guardarlo de todos modos?`)) return;
+    }
     if (!idsLiga.has(d.id) && !confirm(`“${d.id}” no aparece en ${d.liga} de la base de datos que tiene la página.\n¿Agregarlo de todos modos?`)) return;
     msg.textContent = 'Guardando…';
     try {
       const r = await api('agregar', d);
-      filas = r.filas; pendiente = true; pintarFilas();
-      msg.textContent = `${r.nuevo ? 'Agregado' : 'Actualizado'}: ${d.id}. Cuando termines, “Publicar fichas”.`;
-      txtId.value = ''; txtNom.value = ''; selC2.value = '';
+      filas = r.filas; pendiente = true;
+      const eraEdicion = !!editando;
+      salirEdicion();
+      msg.textContent = `${eraEdicion || !r.nuevo ? 'Corregido' : 'Agregado'}: ${d.id}. Cuando termines, “Publicar fichas”.`;
       txtId.focus();
     } catch (e) { msg.textContent = e.message; }
   });
