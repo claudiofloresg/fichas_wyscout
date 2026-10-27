@@ -143,6 +143,7 @@ CENTROS_20M = _total("Deep completed crosses per 90", "Centros Últ. 20 m")
 INTERCEPCIONES = _total("PAdj Interceptions", "Intercepciones")
 ENTRADAS = _total("PAdj Sliding tackles", "Entradas")
 TIROS_BLOQ = _total("Shots blocked per 90", "Tiros Interceptados")
+TOQUES_AREA = _total("Touches in box per 90", "Toques en el Área")
 # --- porteros ---
 GOLES_RECIBIDOS = ("Goles Recibidos", ("Conceded goals", _E), ("Conceded goals per 90", _D))
 XG_CONTRA = ("xG en Contra", ("xG against", _D), ("xG against per 90", _D))
@@ -186,7 +187,7 @@ ESTADISTICAS = {
     "Delantero": [
         MINUTOS, GOLES, XG, ASISTENCIAS,
         TIROS, DUELOS_AER, DUELOS_OF, PASES_ULT_TERCIO,
-        REGATES, DUELOS_DEF, FALTAS_RECIBIDAS, RECUP_RIVAL,
+        REGATES, DUELOS_DEF, FALTAS_RECIBIDAS, TOQUES_AREA,
     ],
 }
 
