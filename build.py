@@ -489,7 +489,19 @@ LISTA_COLUMNAS = {            # columna de la hoja -> palabras con que se recono
     "completo": ("nombre completo", "completo"),
     "comp1": ("comparar con 1", "comparar 1", "comparar_con_1"),
     "comp2": ("comparar con 2", "comparar 2", "comparar_con_2"),
+    "fecha": ("fecha",),
 }
+
+
+def _fecha_lista(v):
+    """'03/11/2026 11:40' (lo que escribe el Apps Script) -> '2026-11-03 11:40' para ordenar. None si no hay."""
+    if es_vacio(v):
+        return None
+    try:
+        t = v if isinstance(v, (pd.Timestamp, datetime)) else pd.to_datetime(str(v).strip(), dayfirst=True)
+        return t.strftime("%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        return None
 
 
 def _id_y_equipo(texto):
@@ -518,6 +530,7 @@ def cargar_lista(path, rep):
         if not val("id"):
             continue
         f = {k: val(k) for k in LISTA_COLUMNAS}
+        f["fecha"] = _fecha_lista(r[cols["fecha"]]) if "fecha" in cols else None
         f["renglon"] = n + 2
         clave = (slug(f["id"]), slug(f["liga"] or ""), slug(f["posicion"] or ""))
         if clave in vistos:
@@ -586,6 +599,7 @@ def grupos_lista(filas, base, rep):
         d = fila.to_dict()
         d["_completo"] = f["completo"]
         d["_liga"] = liga
+        d["_agregado"] = f"{f['fecha'] or '0000'}|{f['renglon']:05d}"   # para ordenar: lo más nuevo arriba (sin fecha: al final)
         d["_ficha"] = {"id": d[C.COL_JUGADOR], "equipo": d.get(C.COL_EQUIPO), "liga": liga, "posicion": posicion,
                        "comparar": comparar, "liga_ref": ref or cfg("LIGA_REFERENCIA", "Liga MX"),
                        "equipo_pumas": cfg("EQUIPO_PUMAS", "Pumas"), "clave_lista": clave}
@@ -907,6 +921,8 @@ def main():
                 "video": videos.get(slug(nom_x)),
                 "nombrePortada": nombre_portada(nom_x, completo),
                 "radares": radares,
+                "agregado": (df.at[i, "_agregado"] if "_agregado" in df.columns and not es_vacio(df.at[i, "_agregado"])
+                             else None),
             })
         for c in sorted(faltan):
             rep["columnas"].append(f"[{origen}] {c}")
@@ -923,7 +939,9 @@ def main():
         if p.get("pumas"):                                  # Pumas: por posición y luego por nombre
             p["jugadores"].sort(key=lambda j: (orden_pos.index(j["posicion"]) if j["posicion"] in orden_pos else 99, slug(j["nombre"])))
         else:
+            # lo último que se agregó a la lista, hasta arriba; luego los de Excel por nombre
             p["jugadores"].sort(key=lambda j: slug(j["nombre"]))
+            p["jugadores"].sort(key=lambda j: j.get("agregado") or "", reverse=True)
 
     # caché de radares: solo lo que sigue en uso
     vivos = {os.path.basename(u).rsplit("_", 1)[0] for u in usados if u.startswith("img/radares/")}
