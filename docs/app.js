@@ -25,16 +25,98 @@
     const t = temp[j.id];
     return t ? { ...j, foto: t.foto || j.foto, mapa: t.mapa || j.mapa, video: t.video || j.video } : j;
   };
-  const generar = (js, prev) => Informe.generar(js.map(conTemp), D, prev ? false : chkPortada.checked);
+  // Pumas: una portada general ("Primer Equipo Varonil") en vez de una por jugador
+  const generar = (js, prev) => Informe.generar(js.map(conTemp), D, prev ? false : chkPortada.checked,
+    pos && pos.pumas ? (pos.portada || 'Primer Equipo Varonil') : null, pos && pos.pumas ? pos.portadaSub : null);
   try { const v = localStorage.getItem('portada'); if (v !== null) chkPortada.checked = v === '1'; } catch (e) { /* sin storage */ }
   chkPortada.addEventListener('change', () => { try { localStorage.setItem('portada', chkPortada.checked ? '1' : '0'); } catch (e) { /* sin storage */ } });
 
   let pos = null, actual = null, urlPrev = null, ocupado = false;
 
+  // ---------------------------------------------------------------- formato de descarga: PDF o PNG
+  const selFormato = $('selFormato');
+  try { const f = localStorage.getItem('formato'); if (f === 'png' || f === 'pdf') selFormato.value = f; } catch (e) { /* sin storage */ }
+  const esPng = () => !!(pos && pos.pumas) && selFormato.value === 'png';   // PNG solo en el apartado Pumas
+  function textosBotones() {
+    btnPdf.textContent = esPng() ? '⬇ Descargar PNG' : '⬇ Descargar PDF';
+    btnEquipo.textContent = esPng() ? '⬇ Todos en PNG (ZIP)' : '⬇ Descargar todos';
+  }
+  selFormato.addEventListener('change', () => {
+    try { localStorage.setItem('formato', selFormato.value); } catch (e) { /* sin storage */ }
+    textosBotones();
+  });
+  textosBotones();
+
+  // PNG: se dibuja cada página del PDF (el mismo de siempre) con pdf.js. Se carga solo la primera vez que se usa.
+  let pdfjs = null;
+  async function cargarPdfjs() {
+    if (!pdfjs) {
+      pdfjs = await import(new URL('vendor/pdfjs/pdf.min.mjs', location.href).href);
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL('vendor/pdfjs/pdf.worker.min.mjs', location.href).href;
+    }
+    return pdfjs;
+  }
+  function cargarScript(src, global) {
+    if (window[global]) return Promise.resolve(window[global]);
+    return new Promise((ok, mal) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = () => ok(window[global]); s.onerror = () => mal(new Error('no se pudo cargar ' + src));
+      document.head.appendChild(s);
+    });
+  }
+  async function pdfAPngs(bytes, avance) {
+    const lib = await cargarPdfjs();
+    const tarea = lib.getDocument({
+      data: bytes.slice(),
+      standardFontDataUrl: new URL('vendor/pdfjs/standard_fonts/', location.href).href,
+    });
+    const doc = await tarea.promise;
+    const out = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      if (avance) avance(n, doc.numPages);
+      const pagina = await doc.getPage(n);
+      const vp = pagina.getViewport({ scale: 2.5 });                 // carta horizontal -> 1980 x 1530 px
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      const cx = cv.getContext('2d');
+      cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      await pagina.render({ canvasContext: cx, canvas: cv, viewport: vp }).promise;
+      out.push(await new Promise((ok) => cv.toBlob(ok, 'image/png')));
+      pagina.cleanup();
+    }
+    await tarea.destroy();
+    return out;
+  }
+  // nombres de las páginas en el orden en que salen del PDF (portada, ficha, portada, ficha…)
+  function nombresPaginas(js, conPortada, numerar) {
+    const out = [];
+    if (conPortada && pos && pos.pumas) { out.push((numerar ? '00_' : '') + 'Portada.png'); conPortada = false; }
+    js.forEach((j, k) => {
+      const base = (numerar ? String(k + 1).padStart(2, '0') + '_' : '') + 'Ficha_' + nombreArchivo(j.nombre);
+      if (conPortada) out.push(base + '_portada.png');
+      out.push(base + '.png');
+    });
+    return out;
+  }
+  async function descargarPng(js, nombreZip) {
+    const bytes = await generar(js);
+    const pngs = await pdfAPngs(bytes, (n, t) => { if (t > 1) status.textContent = `Convirtiendo a PNG… ${n} de ${t}`; });
+    const nombres = nombresPaginas(js, chkPortada.checked, js.length > 1);
+    if (pngs.length === 1) { bajarBlob(pngs[0], nombres[0]); return; }
+    const JSZip = await cargarScript('vendor/jszip.min.js', 'JSZip');
+    const zip = new JSZip();
+    pngs.forEach((b, k) => zip.file(nombres[k] || `pagina_${k + 1}.png`, b));
+    bajarBlob(await zip.generateAsync({ type: 'blob' }), nombreZip);
+  }
+
   D.posiciones.forEach((p) => selPos.appendChild(opt(p.id, `${p.label} (${p.jugadores.length})`)));
 
   function cargarPos() {
     pos = D.posiciones.find((p) => p.id === selPos.value) || D.posiciones[0];
+    // Formato PNG y "Descargar todos" solo en el apartado Pumas
+    $('lblFormato').hidden = !pos.pumas;
+    btnEquipo.hidden = !pos.pumas;
+    textosBotones();
     pintarLista();
   }
 
@@ -51,10 +133,9 @@
       const li = document.createElement('li');
       li.dataset.id = j.id;
       if (actual && actual.id === j.id) li.classList.add('sel');
-      li.innerHTML = `<span class="n"></span><span class="m"></span><span class="e"></span>`;
-      li.querySelector('.n').textContent = j.nombre;
-      li.querySelector('.m').textContent = `${j.minutos.toLocaleString('es-MX')} min`;
-      li.querySelector('.e').textContent = [j.equipo, j.liga, j.posWyscout].filter(Boolean).join(' · ');
+      li.innerHTML = `<span class="n"></span><span class="e"></span>`;
+      li.querySelector('.n').textContent = j.nombrePortada || j.nombre;   // nombre corto (el de la portada)
+      li.querySelector('.e').textContent = j.equipo || '';
       li.addEventListener('click', () => seleccionar(j));
       li.addEventListener('pointerenter', () => Informe.precargar(j), { once: true });
       li.addEventListener('touchstart', () => Informe.precargar(j), { once: true, passive: true });
@@ -64,7 +145,7 @@
     count.textContent = `${js.length} jugador${js.length === 1 ? '' : 'es'}`;
     if (!js.length) { const v = document.createElement('li'); v.className = 'grupo'; v.textContent = 'Sin resultados'; lista.appendChild(v); }
     btnEquipo.disabled = !js.length;
-    btnEquipo.title = `Un PDF con los ${js.length} jugadores de la lista`;
+    btnEquipo.title = `Los ${js.length} jugadores con una sola portada`;
   }
 
   async function seleccionar(j) {
@@ -187,20 +268,25 @@
     } catch (e) { if (w) w.close(); status.textContent = 'Error: ' + e.message; }
   });
 
-  function descargar(bytes, nombre) {
+  function bajarBlob(blob, nombre) {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    a.href = URL.createObjectURL(blob);
     a.download = nombre;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
+  const descargar = (bytes, nombre) => bajarBlob(new Blob([bytes], { type: 'application/pdf' }), nombre);
 
   btnPdf.addEventListener('click', async () => {
     if (!actual || ocupado) return;
     ocupado = true; btnPdf.disabled = true;
     try {
-      descargar(await generar([actual]), `Ficha_${nombreArchivo(actual.nombre)}.pdf`);
-    } catch (e) { status.textContent = 'Error: ' + e.message; }
+      if (esPng()) {
+        status.textContent = 'Generando PNG…';
+        await descargarPng([actual], `Ficha_${nombreArchivo(actual.nombre)}.zip`);
+        status.textContent = '';
+      } else descargar(await generar([actual]), `Ficha_${nombreArchivo(actual.nombre)}.pdf`);
+    } catch (e) { console.error(e); status.textContent = 'Error: ' + e.message; }
     ocupado = false; btnPdf.disabled = false;
   });
 
@@ -210,9 +296,10 @@
     ocupado = true; btnEquipo.disabled = true;
     status.textContent = `Generando ${js.length} fichas…`;
     try {
-      descargar(await generar(js), `Fichas_${nombreArchivo(pos.label)}.pdf`);
+      if (esPng()) await descargarPng(js, `Fichas_${nombreArchivo(pos.label)}_PNG.zip`);
+      else descargar(await generar(js), `Fichas_${nombreArchivo(pos.label)}.pdf`);
       status.textContent = `Listo: ${js.length} fichas.`;
-    } catch (e) { status.textContent = 'Error: ' + e.message; }
+    } catch (e) { console.error(e); status.textContent = 'Error: ' + e.message; }
     ocupado = false; btnEquipo.disabled = false;
   });
 

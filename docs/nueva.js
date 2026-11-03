@@ -260,10 +260,21 @@
   let generadoAntes = leer('generadoAntes') || (window.FICHAS || {}).generado;
   const textoEstado = { queued: 'En cola…', in_progress: 'Generando fichas y radares…', waiting: 'En espera…', requested: 'En cola…', pending: 'En cola…' };
 
+  // "Publicar fichas" = subir los cambios de la lista. "Actualizar datos" = volver a bajar TODO de Drive
+  // (base de datos, fotos, mapas, radares, stats manuales) y rehacer las fichas, aunque la lista no cambie.
+  // va en el encabezado (pantalla principal), junto a "＋ Nueva ficha"
+  const btnAct = el('button', { type: 'button', id: 'btnActualizar', class: 'hdr hdr2',
+    title: 'Vuelve a bajar la base de datos y todo lo de Drive, y rehace las fichas' }, '⟳ Actualizar datos');
+  btnNueva.after(btnAct);
+  const metaFecha = (window.FICHAS || {}).generado;
+  if (metaFecha) btnAct.title = `Datos actualizados: ${metaFecha}. Vuelve a bajar la base de datos y todo lo de Drive.`;
+  meta.remove();                                       // la fecha queda en el tooltip del botón
+
   function botonPublicar() {
-    btnPub.disabled = corriendo || !filas.length;
-    btnPub.textContent = pendiente || !filas.length ? '⬆ Publicar fichas' : '⬆ Publicar de nuevo';
-    btnPub.title = !filas.length ? 'La lista está vacía' : '';
+    btnPub.disabled = corriendo || !filas.length || !pendiente;
+    btnPub.textContent = '⬆ Publicar fichas';
+    btnPub.title = !filas.length ? 'La lista está vacía' : (!pendiente ? 'No hay cambios en la lista. Para traer datos nuevos usa “Actualizar datos”.' : '');
+    btnAct.disabled = corriendo;
   }
 
   function encabezado(clase, texto) {
@@ -285,7 +296,7 @@
         corriendo = true; botonPublicar();
         guardar('publicando', '1');
         ponerEstado('corre', [`${textoEstado[r.run.status] || r.run.status} (iniciada ${fecha})`]);
-        encabezado('corre', '⏳ Publicando…');
+        encabezado('corre', leer('accionFichas') === 'actualizar' ? '⏳ Actualizando…' : '⏳ Publicando…');
         programar(15000);
         return;
       }
@@ -336,18 +347,17 @@
   }
   function programar(ms) { clearTimeout(timer); timer = setTimeout(() => revisarEstado(true), ms); }
 
-  btnPub.addEventListener('click', async () => {
+  async function lanzar(accion) {
     if (!(await conPin())) return;
-    if (!filas.length) return;
-    const msgConf = pendiente
+    const msgConf = accion === 'publicar'
       ? `Se publicarán las ${filas.length} fichas de la lista.\nTarda de 2 a 5 minutos y puedes seguir usando la página. ¿Continuar?`
-      : 'No hay cambios en la lista desde la última publicación.\nSolo sirve si subiste fotos, mapas o radares nuevos a Drive. ¿Publicar de todos modos?';
+      : 'Se vuelve a bajar todo de Drive (base de datos, fotos, mapas, radares y stats manuales) y se rehacen las fichas,\nincluidas las de Pumas.\nTarda de 3 a 6 minutos y puedes seguir usando la página. ¿Continuar?';
     if (!confirm(msgConf)) return;
     corriendo = true; botonPublicar();
     ponerEstado('corre', ['Enviando…']);
     try {
       try {
-        await api('publicar', {}, 1);           // sin reintentos: podría mandarse dos veces
+        await api(accion, {}, 1);               // sin reintentos: podría mandarse dos veces
       } catch (e) {
         if (!/respuesta del servidor/.test(e.message)) throw e;
         // se cortó la conexión: quizá sí se mandó. Se revisa en GitHub antes de dar error.
@@ -357,12 +367,14 @@
       }
       pendiente = false; pintarFilas();
       generadoAntes = (window.FICHAS || {}).generado; esperaPagina = 0;
-      guardar('publicando', '1'); guardar('generadoAntes', generadoAntes);
+      guardar('publicando', '1'); guardar('generadoAntes', generadoAntes); guardar('accionFichas', accion);
       ponerEstado('corre', ['En cola… (puedes cerrar esta ventana)']);
-      encabezado('corre', '⏳ Publicando…');
+      encabezado('corre', accion === 'publicar' ? '⏳ Publicando…' : '⏳ Actualizando…');
       programar(12000);
     } catch (e) { corriendo = false; botonPublicar(); ponerEstado('mal', [e.message]); }
-  });
+  }
+  btnPub.addEventListener('click', () => { if (filas.length && pendiente) lanzar('publicar'); });
+  btnAct.addEventListener('click', () => lanzar('actualizar'));
 
   // Si se recargó la página o se volvió a ella mientras publicaba, se sigue mostrando el avance
   if (pin && leer('publicando')) revisarEstado(true);

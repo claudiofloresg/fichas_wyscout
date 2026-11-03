@@ -50,6 +50,7 @@
   .frame{flex:1;min-height:420px;background:#E4E6E2;border:1px solid var(--line);border-radius:8px;overflow:hidden;position:relative;}
   .frame iframe{width:100%;height:100%;border:0;display:block;}
   .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:14px;text-align:center;padding:24px;}
+  label.chk select{width:auto;font-size:13px;padding:6px 8px;}
   label.chk{display:flex;align-items:center;gap:6px;margin:0;font-size:12px;letter-spacing:0;text-transform:none;color:var(--ink-soft);cursor:pointer;}
   .status{font-size:12px;color:var(--ink-soft);min-height:16px;}
   /* ---- archivos temporales (solo para esta descarga) ---- */
@@ -74,6 +75,9 @@
   /* ---- nueva ficha (lista_fichas) ---- */
   header button.hdr{margin-left:auto;background:var(--gold);border-color:var(--gold);color:var(--navy);padding:8px 14px;}
   header button.hdr + .meta{margin-left:14px;}
+  header button.hdr2{background:transparent;border-color:#fff;color:#fff;}
+  header button.hdr + button.hdr2{margin-left:8px;}
+  [hidden]{display:none !important;}
   header button.hdr.corre{background:#fff;border-color:#fff;}
   header button.hdr.ok{background:#1E7B3A;border-color:#1E7B3A;color:#fff;}
   header button.hdr.mal{background:#B42318;border-color:#B42318;color:#fff;}
@@ -129,6 +133,8 @@
     .toolbar h2{font-size:17px;}
     .toolbar .sp{display:none;}
     .toolbar label.chk{grid-column:1 / -1;order:1;}
+    .toolbar label.chk.fmt{grid-column:auto;}
+    .toolbar label.chk:not(.fmt){grid-column:auto;}
     .toolbar button{width:100%;padding:10px 8px;}
     .toolbar #btnPdf{grid-column:1 / -1;order:2;}
     .toolbar #btnVer{order:3;} .toolbar #btnEquipo{order:4;}
@@ -168,12 +174,13 @@
       </div>
       <div class="sp"></div>
       <label class="chk"><input type="checkbox" id="chkPortada" checked> Incluir portada</label>
+      <label class="chk fmt" id="lblFormato" hidden>Formato <select id="selFormato"><option value="pdf">PDF</option><option value="png">PNG</option></select></label>
       <button id="btnVer" disabled>👁 Vista previa</button>
       <button class="primary" id="btnPdf" disabled>⬇ Descargar PDF</button>
-      <button id="btnEquipo" disabled>⬇ PDF de todos</button>
+      <button id="btnEquipo" disabled hidden>⬇ Descargar todos</button>
     </div>
     <div class="extras off" id="extras">
-      <div class="extras-head">Agregar solo para esta descarga<span>No se guarda: lo permanente se sube a Drive y se publica con actualizar.bat.</span></div>
+      <div class="extras-head">Agregar solo para esta descarga</div>
       <div class="drops">
         <label class="drop" data-tipo="foto"><input type="file" accept="image/*">
           <span class="mini"></span><span class="txt"><span class="dt">Foto</span><span class="dd">Arrastra o haz clic</span></span>

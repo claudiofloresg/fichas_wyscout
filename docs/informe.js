@@ -340,17 +340,28 @@ const Informe = (() => {
       + Po.espaciado * s * (nombre.length - 1);
     while (size > 16 && anchoNombre(size) > Mc.w - 40) size -= 1;
     let x = cx - anchoNombre(size) / 2;
-    const yNombre = (y0 + y1) / 2 + size * 0.36;
+    const sub = jug.subtitulo ? espaciado(jug.subtitulo, Po.tamNombre * 0.4) : null;   // opcional (portada general)
+    const yNombre = (y0 + y1) / 2 + size * 0.36 - (sub ? Po.tamNombre * 0.35 : 0);
     for (const ch of nombre) {
       page.drawText(ch, { x, y: Y(yNombre), size, font: f.bold, color: C.navy });
       x += f.bold.widthOfTextAtSize(ch, size) + Po.espaciado * size;
     }
+    if (sub) {
+      const ts = Po.tamNombre * 0.4;
+      let xs = cx - sub.w / 2;
+      for (const ch of sub.s) {
+        page.drawText(ch, { x: xs, y: Y(yNombre + ts * 2.2), size: ts, font: f.bold, color: C.gold });
+        xs += f.bold.widthOfTextAtSize(ch, ts) + Po.espaciado * ts;
+      }
+    }
   }
 
-  async function generar(jugadores, meta, conPortada = true) {
+  // portadaGeneral (texto): UNA portada al inicio con ese título en vez de una por jugador (apartado Pumas)
+  async function generar(jugadores, meta, conPortada = true, portadaGeneral = null, subtitulo = null) {
     const ctx = await nuevoDoc();
+    if (conPortada && portadaGeneral) await portada(ctx, { nombrePortada: portadaGeneral, subtitulo });
     for (const j of jugadores) {
-      if (conPortada) await portada(ctx, j);
+      if (conPortada && !portadaGeneral) await portada(ctx, j);
       await pagina(ctx, j, meta);
     }
     return ctx.doc.save();

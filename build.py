@@ -648,6 +648,50 @@ def grupos_excel(rep):
     return out
 
 
+# ============================================================================= fichas de Pumas (automáticas)
+def es_pumas(equipo):
+    return bool(equipo) and slug(cfg("EQUIPO_PUMAS", "Pumas")) in slug(equipo)
+
+
+def grupos_pumas(base, rep):
+    """Una ficha por cada jugador de Pumas de la base de datos (hojas de PUMAS_LIGAS; default la liga de referencia).
+    La posición sale de la 1a posición de Wyscout (CF -> Delantero, LCB -> Defensa Central…) o de PUMAS_POSICION.
+    Radares: individual + vs promedio de la liga (sin comparativo)."""
+    import radares as R
+    ref = liga_referencia(base)
+    ligas = cfg("PUMAS_LIGAS") or [ref]
+    minimo = cfg("PUMAS_MIN_MINUTOS", 1)
+    forzar = {slug(k): v for k, v in (cfg("PUMAS_POSICION", {}) or {}).items()}
+    grupos = {}
+    for l in ligas:
+        liga = base.liga(l) if l else None
+        if not liga:
+            rep["pumas"].append(f"la liga '{l}' (PUMAS_LIGAS) no es una hoja de la base de datos")
+            continue
+        df = base.hojas[liga]
+        col_eq = C.COL_EQUIPO if C.COL_EQUIPO in df.columns else df.columns[1]
+        for _, fila in df.iterrows():
+            if not es_pumas(_txt(fila[col_eq])):
+                continue
+            mins = to_number(fila.get(C.COL_MINUTOS))
+            if math.isnan(mins) or mins < minimo:
+                continue
+            nom = _txt(fila[C.COL_JUGADOR])
+            w = _txt(fila.get(C.COL_POSICION_WYSCOUT)).split(",")[0].strip()
+            posicion = posicion_de(forzar.get(slug(nom)) or R.MAPEO_POSICIONES.get(w, "") or "")
+            if not posicion:
+                rep["pumas"].append(f"{nom}: no sé su posición (Wyscout '{w}'); ponla en PUMAS_POSICION de config.py")
+                continue
+            d = fila.to_dict()
+            d["_liga"] = liga
+            d["_ficha"] = {"id": nom, "equipo": d.get(C.COL_EQUIPO), "liga": liga, "posicion": posicion, "comparar": [],
+                           "liga_ref": ref or liga, "equipo_pumas": cfg("EQUIPO_PUMAS", "Pumas"), "clave_lista": ""}
+            grupos.setdefault(posicion, []).append(d)
+    n = sum(len(v) for v in grupos.values())
+    print(f"  Fichas de Pumas: {n} jugadores ({', '.join(str(l) for l in ligas)})")
+    return [(p, pd.DataFrame(v).reset_index(drop=True), "pumas") for p, v in grupos.items()]
+
+
 def cargar_modulo_radares(rep):
     if not cfg("RADARES_AUTOMATICOS", True):
         return None
@@ -665,7 +709,7 @@ def cargar_modulo_radares(rep):
 def main():
     for d in list(OUT_IMG.values()) + [os.path.dirname(OUT_DATA)]:
         os.makedirs(d, exist_ok=True)
-    rep = {k: [] for k in ("lista", "sin_posicion", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar", "radar_extra",
+    rep = {k: [] for k in ("lista", "pumas", "sin_posicion", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar", "radar_extra",
                            "radar_ignorado", "paises", "columnas", "repetidos", "extra_sin_jugador")}
 
     # ---- de dónde salen las fichas
@@ -692,7 +736,7 @@ def main():
             sys.exit(1)
     if modo == "lista" or (arch_base and os.path.isfile(ruta(arch_base))):
         import radares as R
-        mod_radares = cargar_modulo_radares(rep) if modo == "lista" else None
+        mod_radares = cargar_modulo_radares(rep) if (modo == "lista" or cfg("FICHAS_PUMAS", True)) else None
         print(f"Base de datos: {os.path.basename(arch_base)}")
         base = R.Base(ruta(arch_base))
         exportar_opciones(base)
@@ -720,6 +764,10 @@ def main():
         if not grupos:
             print(f"[ERROR] No hay archivos Excel en {ruta(C.CARPETA_EXCEL)}")
             sys.exit(1)
+    # Fichas de Pumas: siempre en automático desde la base de datos (después de la protección de lista vacía)
+    if base is not None and cfg("FICHAS_PUMAS", True):
+        grupos += grupos_pumas(base, rep)
+    etiqueta_pumas = cfg("PUMAS_ETIQUETA", "Pumas UNAM")
     cache_path = os.path.join(OUT_IMG["radares"], ".cache_radares.json")
     try:
         cache = json.load(open(cache_path, encoding="utf-8"))
@@ -744,8 +792,6 @@ def main():
             print(f"  [aviso] '{posicion}' no tiene catálogo en ESTADISTICAS; su cuadro sale vacío")
         col_eq = C.COL_EQUIPO if C.COL_EQUIPO in df.columns else df.columns[1]
         faltan = set()
-        pos = posiciones.setdefault(posicion, {"id": slug(posicion), "label": posicion, "archivos": [], "jugadores": []})
-        pos["archivos"].append(origen)
         print(f"\n== {posicion}  ({origen}) — {len(df)} jugadores")
 
         for i in df.index:
@@ -757,8 +803,19 @@ def main():
                 rep["sin_nombre"].append(f"[{posicion}] {nom_x}")
             pid = slug(nom_x)
             jid = slug(f"{nom_x} {equipo or ''}")
+            # Los de Pumas van en su propio apartado (no salen en Delantero, Defensa…)
+            if cfg("FICHAS_PUMAS", True) and es_pumas(equipo):
+                pos = posiciones.setdefault("__pumas__", {"id": "pumas", "label": etiqueta_pumas, "pumas": True,
+                                                          "portada": cfg("PUMAS_PORTADA", "Primer Equipo Varonil"),
+                                                          "portadaSub": cfg("PUMAS_PORTADA_SUBTITULO", None),
+                                                          "archivos": [], "jugadores": []})
+            else:
+                pos = posiciones.setdefault(posicion, {"id": slug(posicion), "label": posicion, "archivos": [], "jugadores": []})
+            if origen not in pos["archivos"]:
+                pos["archivos"].append(origen)
             if any(j["id"] == jid for j in pos["jugadores"]):
-                rep["repetidos"].append(f"[{posicion}] {nom_x} ({equipo})")
+                if origen != "pumas":                       # el automático de Pumas cede ante la lista / Excel sin avisar
+                    rep["repetidos"].append(f"[{posicion}] {nom_x} ({equipo})")
                 continue
             claves = (nom_x, completo)
 
@@ -860,9 +917,13 @@ def main():
         for k, (nombre, _) in vals.items():
             if k not in todos:
                 rep["extra_sin_jugador"].append(nombre)
-    lista = sorted(posiciones.values(), key=lambda p: (orden_pos.index(p["label"]) if p["label"] in orden_pos else 99, p["label"]))
+    lista = sorted(posiciones.values(), key=lambda p: (-1 if p.get("pumas") else
+                                                       orden_pos.index(p["label"]) if p["label"] in orden_pos else 99, p["label"]))
     for p in lista:
-        p["jugadores"].sort(key=lambda j: slug(j["nombre"]))
+        if p.get("pumas"):                                  # Pumas: por posición y luego por nombre
+            p["jugadores"].sort(key=lambda j: (orden_pos.index(j["posicion"]) if j["posicion"] in orden_pos else 99, slug(j["nombre"])))
+        else:
+            p["jugadores"].sort(key=lambda j: slug(j["nombre"]))
 
     # caché de radares: solo lo que sigue en uso
     vivos = {os.path.basename(u).rsplit("_", 1)[0] for u in usados if u.startswith("img/radares/")}
@@ -890,6 +951,7 @@ def main():
 
     titulos = {
         "lista": "Problemas en la lista de fichas (hoja lista_fichas)",
+        "pumas": "Fichas de Pumas con problemas",
         "sin_posicion": "Archivos que no se reconocen como posición (revisa POSICIONES en config.py)",
         "repetidos": "Jugadores repetidos en la misma posición (se tomó el primero; la lista gana sobre los Excel)",
         "columnas": "Columnas que pide config.py y no vienen en el Excel",
@@ -912,7 +974,7 @@ def main():
     print(f"\nModo: {'lista de fichas' if modo == 'lista' else 'Excel por posición'}")
     print(f"Listo -> {os.path.relpath(OUT_DATA, BASE)}  ({n} fichas en {len(lista)} posiciones, "
           f"{os.path.getsize(OUT_DATA) / 1024:.0f} KB)")
-    for k in ("lista", "sin_posicion", "columnas", "paises", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar"):
+    for k in ("lista", "pumas", "sin_posicion", "columnas", "paises", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar"):
         if rep[k]:
             print(f"  {titulos[k].split(' (')[0]}: {len(set(rep[k]))}")
     print("  Detalle en reporte_build.txt")
