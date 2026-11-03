@@ -83,12 +83,19 @@
 
   // ------------------------------------------------------------------ opciones (ligas, IDs, Pumas)
   let OP = null;
+  // Se vuelve a bajar CADA vez que se abre "Nueva ficha": así salen los jugadores/ligas nuevos de la base
+  // sin recargar la página (si falla, se usa la que ya estaba cargada).
+  let scriptOp = null, opVersion = '';
   function cargarOpciones() {
-    if (window.OPCIONES) { OP = window.OPCIONES; return Promise.resolve(OP); }
     return new Promise((resolve, reject) => {
       const s = el('script', { src: `data/opciones.js?v=${Date.now()}` });
-      s.onload = () => { OP = window.OPCIONES; OP ? resolve(OP) : reject(new Error('opciones vacías')); };
-      s.onerror = () => reject(new Error('No hay data/opciones.js. Falta publicar una vez con la base de datos.'));
+      s.onload = () => {
+        if (scriptOp) scriptOp.remove();
+        scriptOp = s; OP = window.OPCIONES;
+        OP ? resolve(OP) : reject(new Error('opciones vacías'));
+      };
+      s.onerror = () => (window.OPCIONES ? (OP = window.OPCIONES, resolve(OP))
+        : reject(new Error('No hay data/opciones.js. Falta publicar una vez con la base de datos.')));
       document.head.appendChild(s);
     });
   }
@@ -220,7 +227,17 @@
     if (btnNueva.classList.contains('ok')) { location.reload(); return; }   // "Ver fichas nuevas"
     if (!(await conPin())) return;
     try { await cargarOpciones(); } catch (e) { alert(e.message); return; }
-    if (!selLiga.options.length) llenarSelects();
+    // si la base cambió desde la última vez, se rehacen las listas (conservando lo que ya estaba elegido)
+    const v = JSON.stringify([OP.ligas, Object.values(OP.jugadores).reduce((a, l) => a + l.length, 0), OP.pumas.length]);
+    if (v !== opVersion) {
+      const antes = { liga: selLiga.value, pos: selPosN.value, lc1: selLC1.value, lc2: selLC2.value };
+      llenarSelects();
+      if (antes.liga && OP.ligas.includes(antes.liga)) { selLiga.value = antes.liga; llenarIds(); }
+      if (antes.pos) selPosN.value = antes.pos;
+      if (antes.lc1 && OP.ligas.includes(antes.lc1)) { selLC1.value = antes.lc1; llenarComp(1); }
+      if (antes.lc2 && OP.ligas.includes(antes.lc2)) { selLC2.value = antes.lc2; llenarComp(2); }
+      opVersion = v;
+    }
     dlg.showModal();
     cargarLista();
     if (!corriendo) revisarEstado(false);

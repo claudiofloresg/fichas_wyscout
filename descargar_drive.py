@@ -78,6 +78,7 @@ def buscar_archivo(raiz, contiene, solo_raiz=False):
 
 def bajar_archivo(srv, fid, carpeta):
     """Baja un archivo suelto por ID (la base de datos). Google Sheet -> .xlsx."""
+    os.makedirs(carpeta, exist_ok=True)
     f = srv.files().get(fileId=fid, fields="name, mimeType", supportsAllDrives=True).execute()
     destino = os.path.join(carpeta, nombre_seguro(f["name"]))
     if f["mimeType"] == SHEET:
@@ -88,6 +89,26 @@ def bajar_archivo(srv, fid, carpeta):
             destino += EXTENSIONES.get(f["mimeType"], ".xlsx")
         bajar(srv.files().get_media(fileId=fid, supportsAllDrives=True), destino)
     return destino
+
+
+def base_mas_reciente(srv, nombre_parecido):
+    """Entre todos los archivos que la cuenta de servicio puede ver, el más reciente que se llame igual
+    (o, si no se sabe el nombre, que contenga "Data Wyscout"). Así no importa si alguien subió una copia nueva
+    en vez de reemplazar el archivo: se toma la última. Devuelve el dict del archivo o None."""
+    nombre = (nombre_parecido or "Data Wyscout").replace("'", "\\'")
+    tipos = " or ".join(f"mimeType = '{m}'" for m in (XLSX, SHEET, "application/vnd.ms-excel"))
+    q = f"name contains '{nombre}' and trashed = false and ({tipos})"
+    try:
+        r = srv.files().list(q=q, orderBy="modifiedTime desc", pageSize=10,
+                             fields="files(id, name, mimeType, modifiedTime)",
+                             supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+    except Exception as e:
+        print(f"  [aviso] no pude buscar la base de datos por nombre: {e}")
+        return None
+    archivos = r.get("files", [])
+    for f in archivos:
+        print(f"    visto: {f['name']}  (modificado {f.get('modifiedTime', '?')[:16].replace('T', ' ')} UTC)")
+    return archivos[0] if archivos else None
 
 
 def nombre_seguro(n):
@@ -174,7 +195,18 @@ def main():
             correo = json.load(open(KEY_FILE)).get("client_email", "la cuenta de servicio")
             print(f"[ERROR] No puedo bajar la base de datos {BASE_FILE_ID}. ¿Está compartida con {correo}?\n  {e}")
             sys.exit(1)
-    base = base or buscar_archivo(DESTINO, NOMBRE_BASE)
+    if not base:
+        por_atajo = buscar_archivo(DESTINO, NOMBRE_BASE)        # el acceso directo dentro de data_fichas
+        nombre = os.path.splitext(os.path.basename(por_atajo))[0] if por_atajo else None
+        print(f"  Buscando la versión más reciente de la base de datos ({nombre or 'Data Wyscout'})…")
+        f = base_mas_reciente(srv, nombre)
+        if f:
+            try:
+                base = bajar_archivo(srv, f["id"], os.path.join(DESTINO, "_base"))
+                print(f"  Base de datos: {f['name']} (modificada {f.get('modifiedTime', '?')[:16].replace('T', ' ')} UTC)")
+            except Exception as e:
+                print(f"  [aviso] no pude bajar '{f['name']}': {e}")
+        base = base or por_atajo
     lista = buscar_archivo(DESTINO, NOMBRE_LISTA, solo_raiz=True)
     print(f"  Lista de fichas: {lista or 'no hay (se usan los Excel por posición)'}")
     print(f"  Base de datos:   {base or 'no se encontró'}")
