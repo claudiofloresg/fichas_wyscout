@@ -62,11 +62,14 @@ except ImportError:
 from paises import PAISES
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DOCS = os.path.join(BASE, "docs")
+# python build.py --pumas  -> fichas de jugadores de Pumas SOLO en esta compu (carpeta pumas_local/, no se sube
+# a GitHub ni toca la página). Sin --pumas -> la página de siempre (docs/), ya sin jugadores de Pumas.
+MODO_PUMAS = "--pumas" in sys.argv
+DOCS = os.path.join(BASE, "pumas_local" if MODO_PUMAS else "docs")
 OUT_DATA = os.path.join(DOCS, "data", "fichas.js")
 OUT_OPCIONES = os.path.join(DOCS, "data", "opciones.js")
 OUT_IMG = {k: os.path.join(DOCS, "img", k) for k in ("fotos", "mapas", "radares")}
-REPORTE = os.path.join(BASE, "reporte_build.txt")
+REPORTE = os.path.join(BASE, "reporte_pumas.txt" if MODO_PUMAS else "reporte_build.txt")
 
 cfg = lambda nombre, default=None: getattr(C, nombre, default)  # noqa: E731
 
@@ -730,6 +733,8 @@ def main():
     arch_lista, arch_base = cfg("ARCHIVO_LISTA"), cfg("ARCHIVO_BASE")
     base = mod_radares = None
     grupos = []                                # [(posición, DataFrame, etiqueta del origen)]
+    if MODO_PUMAS:
+        return main_pumas(rep, arch_base)
     if arch_lista and os.path.isfile(ruta(arch_lista)):
         if not (arch_base and os.path.isfile(ruta(arch_base))):
             print(f"[ERROR] Hay lista de fichas pero no encuentro la base de datos ARCHIVO_BASE = {arch_base}")
@@ -750,7 +755,7 @@ def main():
             sys.exit(1)
     if modo == "lista" or (arch_base and os.path.isfile(ruta(arch_base))):
         import radares as R
-        mod_radares = cargar_modulo_radares(rep) if (modo == "lista" or cfg("FICHAS_PUMAS", True)) else None
+        mod_radares = cargar_modulo_radares(rep) if modo == "lista" else None
         print(f"Base de datos: {os.path.basename(arch_base)}")
         base = R.Base(ruta(arch_base))
         exportar_opciones(base)
@@ -778,9 +783,39 @@ def main():
         if not grupos:
             print(f"[ERROR] No hay archivos Excel en {ruta(C.CARPETA_EXCEL)}")
             sys.exit(1)
-    # Fichas de Pumas: siempre en automático desde la base de datos (después de la protección de lista vacía)
-    if base is not None and cfg("FICHAS_PUMAS", True):
-        grupos += grupos_pumas(base, rep)
+    return armar(rep, modo, grupos, base, mod_radares)
+
+
+def main_pumas(rep, arch_base):
+    """Solo las fichas de Pumas, en pumas_local/ (la página no se toca)."""
+    if not (arch_base and os.path.isfile(ruta(arch_base))):
+        print(f"[ERROR] No encuentro la base de datos (ARCHIVO_BASE = {arch_base}).\n"
+              "  Pon gdrive_key.json en esta carpeta, o ARCHIVO_BASE en config_local.py.")
+        sys.exit(1)
+    import radares as R
+    print(f"Base de datos: {os.path.basename(arch_base)}")
+    base = R.Base(ruta(arch_base))
+    mod_radares = cargar_modulo_radares(rep)
+    grupos = grupos_pumas(base, rep)
+    if not grupos:
+        print("[ERROR] No encontré jugadores de Pumas en la base de datos (revisa PUMAS_LIGAS / EQUIPO_PUMAS).")
+        sys.exit(1)
+    armar(rep, "pumas", grupos, base, mod_radares)
+    copiar_pagina_pumas()
+
+
+def copiar_pagina_pumas():
+    """La página local de Pumas: herramientas/pumas/* + lo que comparte con la página (diseño, fondo, librerías)."""
+    import shutil
+    src = os.path.join(BASE, "herramientas", "pumas")
+    for f in os.listdir(src):
+        shutil.copy2(os.path.join(src, f), os.path.join(DOCS, f))
+    shutil.copy2(os.path.join(BASE, "docs", "informe.js"), os.path.join(DOCS, "informe.js"))
+    for d in ("assets", "vendor"):
+        shutil.copytree(os.path.join(BASE, "docs", d), os.path.join(DOCS, d), dirs_exist_ok=True)
+
+
+def armar(rep, modo, grupos, base, mod_radares):
     etiqueta_pumas = cfg("PUMAS_ETIQUETA", "Pumas UNAM")
     cache_path = os.path.join(OUT_IMG["radares"], ".cache_radares.json")
     try:
@@ -818,7 +853,7 @@ def main():
             pid = slug(nom_x)
             jid = slug(f"{nom_x} {equipo or ''}")
             # Los de Pumas van en su propio apartado (no salen en Delantero, Defensa…)
-            if cfg("FICHAS_PUMAS", True) and es_pumas(equipo):
+            if MODO_PUMAS:
                 pos = posiciones.setdefault("__pumas__", {"id": "pumas", "label": etiqueta_pumas, "pumas": True,
                                                           "portada": cfg("PUMAS_PORTADA", "Primer Equipo Varonil"),
                                                           "portadaSub": cfg("PUMAS_PORTADA_SUBTITULO", None),
@@ -989,13 +1024,13 @@ def main():
             f.write(f"\n=== {t}: {len(items)}\n" + "".join(f"  - {x}\n" for x in items))
 
     n = sum(len(p["jugadores"]) for p in lista)
-    print(f"\nModo: {'lista de fichas' if modo == 'lista' else 'Excel por posición'}")
+    print(f"\nModo: {({'lista': 'lista de fichas', 'pumas': 'fichas de Pumas (solo local, pumas_local/)'}).get(modo, 'Excel por posición')}")
     print(f"Listo -> {os.path.relpath(OUT_DATA, BASE)}  ({n} fichas en {len(lista)} posiciones, "
           f"{os.path.getsize(OUT_DATA) / 1024:.0f} KB)")
     for k in ("lista", "pumas", "sin_posicion", "columnas", "paises", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar"):
         if rep[k]:
             print(f"  {titulos[k].split(' (')[0]}: {len(set(rep[k]))}")
-    print("  Detalle en reporte_build.txt")
+    print(f"  Detalle en {os.path.basename(REPORTE)}")
 
 
 if __name__ == "__main__":
