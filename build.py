@@ -813,6 +813,11 @@ def copiar_pagina_pumas():
     shutil.copy2(os.path.join(BASE, "docs", "informe.js"), os.path.join(DOCS, "informe.js"))
     for d in ("assets", "vendor"):
         shutil.copytree(os.path.join(BASE, "docs", d), os.path.join(DOCS, d), dirs_exist_ok=True)
+    faltan = [f for f in ("vendor/pdfjs/pdf.min.mjs", "vendor/pdfjs/pdf.worker.min.mjs", "vendor/jszip.min.js")
+              if not os.path.isfile(os.path.join(BASE, "docs", f))]
+    if faltan:
+        print("\n[AVISO] Faltan archivos para descargar en PNG: " + ", ".join("docs/" + f for f in faltan) +
+              "\n  Copia la carpeta docs/vendor del zip que te mandaron y vuelve a correr fichas_pumas.bat.")
 
 
 def armar(rep, modo, grupos, base, mod_radares):
@@ -988,6 +993,16 @@ def armar(rep, modo, grupos, base, mod_radares):
         for f in os.listdir(d):
             if not f.startswith(".") and os.path.isfile(os.path.join(d, f)) and f"img/{sub}/{f}" not in usados:
                 os.remove(os.path.join(d, f))
+
+    # ?v=<fecha del archivo> en cada imagen: si un radar/foto/mapa cambia, el navegador baja el nuevo
+    # (sin esto podía seguir mostrando el viejo que tenía guardado)
+    def _v(u):
+        p = os.path.join(DOCS, u) if u else None
+        return f"{u}?v={int(os.path.getmtime(p))}" if p and os.path.isfile(p) else u
+    for p_ in lista:
+        for j in p_["jugadores"]:
+            j["foto"], j["mapa"] = _v(j.get("foto")), _v(j.get("mapa"))
+            j["radares"] = [_v(r) for r in j.get("radares") or []]
 
     payload = {
         "generado": datetime.now().strftime("%d/%m/%Y %H:%M"),

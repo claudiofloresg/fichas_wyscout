@@ -1,4 +1,4 @@
-Reporte de actualización — 10/11/2026 10:32
+Reporte de actualización — 10/11/2026 10:59
 
 === Problemas en la lista de fichas (hoja lista_fichas): 0
 
@@ -12,7 +12,7 @@ Reporte de actualización — 10/11/2026 10:32
 
 === Países sin traducir (agrégalos en TRADUCCION_PAISES de config.py): 0
 
-=== Sin nombre completo (se usa el del Excel): 25
+=== Sin nombre completo (se usa el del Excel): 26
   - [Defensa Central] Nathan Silva
   - [Defensa Central] Rubén Duarte
   - [Delantero] J. Macías
@@ -28,6 +28,7 @@ Reporte de actualización — 10/11/2026 10:32
   - [Lateral] E. Villaseñor
   - [Lateral] Jesus Rivas
   - [Lateral] P. Bennevendo
+  - [Lateral] R. López
   - [Lateral] Á. Angulo
   - [Mediocampista] A. Carrasquilla
   - [Mediocampista] D. Ramírez
@@ -39,7 +40,7 @@ Reporte de actualización — 10/11/2026 10:32
   - [Mediocampista] S. Trigos
   - [Portero] K. Navas
 
-=== Sin foto: 25
+=== Sin foto: 26
   - A. Carrasquilla
   - A. Medina
   - C. Calderón
@@ -57,6 +58,7 @@ Reporte de actualización — 10/11/2026 10:32
   - P. Bennevendo
   - P. Monroy
   - P. Vite
+  - R. López
   - R. Morales
   - Rubén Duarte
   - S. Córdova
@@ -66,7 +68,7 @@ Reporte de actualización — 10/11/2026 10:32
   - Á. Angulo
   - Á. Rico Reyes
 
-=== Sin mapa de calor: 25
+=== Sin mapa de calor: 26
   - A. Carrasquilla
   - A. Medina
   - C. Calderón
@@ -84,6 +86,7 @@ Reporte de actualización — 10/11/2026 10:32
   - P. Bennevendo
   - P. Monroy
   - P. Vite
+  - R. López
   - R. Morales
   - Rubén Duarte
   - S. Córdova
