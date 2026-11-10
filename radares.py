@@ -51,12 +51,18 @@ def disponible():
     return None
 
 
-VERSION = "radares-2"          # súbelo si cambias cálculos o estilo: fuerza a regenerar todos
+VERSION = "radares-3"          # súbelo si cambias cálculos o estilo: fuerza a regenerar todos
 
 CREDITO = 'Elaborado por Inteligencia Deportiva "Pumas"'
 # Factor de nivel de liga (solo radares contra Liga MX). La clave se busca dentro del nombre de la hoja
 # (sin acentos ni mayúsculas): "u21" vale para "Liga MX U21" y "Liga MX U21 - 2526". Las demás ligas = 1.
 FACTOR_LIGA = {"u21": 0.8, "expansion": 0.8}
+
+# Leyenda del radar individual (azul, amarillo, rojo) por posición. Las que no estén aquí usan "_default".
+LEYENDAS = {
+    "_default": ("Ofensiva", "Posesión", "Defensiva"),
+    "Portero": ("Atajadas", "Área y Juego Aéreo", "Distribución"),
+}
 # Métricas que NO se ajustan: porcentajes y las de portero donde menos es mejor
 SIN_AJUSTE = ("%", "against", "conceded", "prevented", "clean sheets")
 
@@ -242,6 +248,7 @@ METRICAS_POR_POSICION = {'Portero': ['Conceded goals per 90',
 def configurar(cfg):
     """Permite sobreescribir constantes desde config.py (RADAR_MIN_MINUTOS, RADAR_CREDITO, ...)."""
     global MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, CREDITO, DPI, FACTOR_LIGA
+    LEYENDAS.update(cfg("RADAR_LEYENDAS", {}) or {})
     FACTOR_LIGA = dict(cfg("FACTOR_LIGA", FACTOR_LIGA) or {})
     MIN_MINUTOS_TOTALES = cfg("RADAR_MIN_MINUTOS", MIN_MINUTOS_TOTALES)
     MIN_MINUTOS_PROMEDIO = cfg("RADAR_MIN_MINUTOS_PARTIDO", MIN_MINUTOS_PROMEDIO)
@@ -434,6 +441,24 @@ def _guardar(fig, ruta):
     plt.close(fig)
 
 
+def _leyenda(fig, etiquetas, colores, y=0.925, size=14):
+    """Cuadrito de color + texto, los tres centrados (se ajusta al largo de cada etiqueta)."""
+    r = fig.canvas.get_renderer()
+    ancho_fig = fig.get_figwidth() * fig.dpi
+    caja, sep, hueco = 0.025, 0.008, 0.03
+    anchos = []
+    for t in etiquetas:
+        tx = fig.text(0, 0, t, size=size)
+        anchos.append(tx.get_window_extent(r).width / ancho_fig)
+        tx.remove()
+    x = 0.515 - (sum(caja + sep + a for a in anchos) + hueco * (len(etiquetas) - 1)) / 2
+    for t, c, a in zip(etiquetas, colores, anchos):
+        fig.patches.append(plt.Rectangle((x, y - 0.0025), caja, 0.021, fill=True, color=c,
+                                         transform=fig.transFigure, figure=fig))
+        fig.text(x + caja + sep, y, t, size=size, color="#000000")
+        x += caja + sep + a + hueco
+
+
 def radar_individual(base, fila, liga, pos_radar, ruta):
     metricas = METRICAS_POR_POSICION[pos_radar]
     nombres = [NOMBRES_DISPLAY.get(m, m) for m in metricas]
@@ -458,12 +483,7 @@ def radar_individual(base, fila, liga, pos_radar, ruta):
     )
     fig.text(0.515, 0.975, f"{fila['Player']} - {fila['Team']}", size=16, ha="center", color="#000000")
     fig.text(0.515, 0.953, f"{liga} | Percentil por Posición ({pos_radar})", size=13, ha="center", color="#000000")
-    fig.text(0.34, 0.925, "Ofensiva      Posesión      Defensiva", size=14, color="#000000")
-    fig.patches.extend([
-        plt.Rectangle((0.31, 0.9225), 0.025, 0.021, fill=True, color="#1a78cf", transform=fig.transFigure, figure=fig),
-        plt.Rectangle((0.462, 0.9225), 0.025, 0.021, fill=True, color="#ff9300", transform=fig.transFigure, figure=fig),
-        plt.Rectangle((0.615, 0.9225), 0.025, 0.021, fill=True, color="#d70232", transform=fig.transFigure, figure=fig),
-    ])
+    _leyenda(fig, LEYENDAS.get(pos_radar, LEYENDAS["_default"]), ("#1a78cf", "#ff9300", "#d70232"))
     fig.text(0.99, 0.02, f"NOTA: Percentiles calculados por posición\n{CREDITO}", size=9, ha="right", color="#000000")
     _guardar(fig, ruta)
 

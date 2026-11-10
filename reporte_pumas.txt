@@ -1,0 +1,102 @@
+Reporte de actualización — 10/11/2026 10:11
+
+=== Problemas en la lista de fichas (hoja lista_fichas): 0
+
+=== Fichas de Pumas con problemas: 0
+
+=== Archivos que no se reconocen como posición (revisa POSICIONES en config.py): 0
+
+=== Jugadores repetidos en la misma posición (se tomó el primero; la lista gana sobre los Excel): 0
+
+=== Columnas que pide config.py y no vienen en el Excel: 0
+
+=== Países sin traducir (agrégalos en TRADUCCION_PAISES de config.py): 0
+
+=== Sin nombre completo (se usa el del Excel): 25
+  - [Defensa Central] Nathan Silva
+  - [Defensa Central] Rubén Duarte
+  - [Delantero] J. Macías
+  - [Delantero] Juninho
+  - [Delantero] L. Herrera
+  - [Delantero] R. Morales
+  - [Delantero] Á. Rico Reyes
+  - [Extremo] A. Medina
+  - [Extremo] C. Huerta
+  - [Extremo] S. García Arriola
+  - [Extremo] U. Antuna
+  - [Lateral] C. Calderón
+  - [Lateral] E. Villaseñor
+  - [Lateral] Jesus Rivas
+  - [Lateral] P. Bennevendo
+  - [Lateral] Á. Angulo
+  - [Mediocampista] A. Carrasquilla
+  - [Mediocampista] D. Ramírez
+  - [Mediocampista] I. Luna
+  - [Mediocampista] K. Carranza
+  - [Mediocampista] P. Monroy
+  - [Mediocampista] P. Vite
+  - [Mediocampista] S. Córdova
+  - [Mediocampista] S. Trigos
+  - [Portero] K. Navas
+
+=== Sin foto: 25
+  - A. Carrasquilla
+  - A. Medina
+  - C. Calderón
+  - C. Huerta
+  - D. Ramírez
+  - E. Villaseñor
+  - I. Luna
+  - J. Macías
+  - Jesus Rivas
+  - Juninho
+  - K. Carranza
+  - K. Navas
+  - L. Herrera
+  - Nathan Silva
+  - P. Bennevendo
+  - P. Monroy
+  - P. Vite
+  - R. Morales
+  - Rubén Duarte
+  - S. Córdova
+  - S. García Arriola
+  - S. Trigos
+  - U. Antuna
+  - Á. Angulo
+  - Á. Rico Reyes
+
+=== Sin mapa de calor: 25
+  - A. Carrasquilla
+  - A. Medina
+  - C. Calderón
+  - C. Huerta
+  - D. Ramírez
+  - E. Villaseñor
+  - I. Luna
+  - J. Macías
+  - Jesus Rivas
+  - Juninho
+  - K. Carranza
+  - K. Navas
+  - L. Herrera
+  - Nathan Silva
+  - P. Bennevendo
+  - P. Monroy
+  - P. Vite
+  - R. Morales
+  - Rubén Duarte
+  - S. Córdova
+  - S. García Arriola
+  - S. Trigos
+  - U. Antuna
+  - Á. Angulo
+  - Á. Rico Reyes
+
+=== Radares faltantes: 0
+
+=== Carpetas con más radares del máximo (MAX_RADARES): 0
+
+=== Imágenes en carpetas de radares que no se usan (el vs debe llamarse <Jugador>_<Otro>.png): 0
+
+=== Nombres en los Excel de datos extra que no están en ningún Excel de posición: 0
