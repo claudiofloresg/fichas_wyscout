@@ -21,3 +21,7 @@ config_auto.py
 
 herramientas/
 fichas_pumas.bat
+
+# Fichas de Pumas: SOLO en esta compu (fichas_pumas.bat)
+pumas_local/
+reporte_pumas.txt
