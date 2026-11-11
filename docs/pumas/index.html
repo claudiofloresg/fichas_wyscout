@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Fichas Pumas (local)</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
+<!-- Página SOLO local (fichas_pumas.bat). Se copia a pumas_local/, que no se sube a GitHub. -->
+<style>
+  :root{
+    --paper:#F3F4F2; --card:#FFFFFF; --ink:#12181E; --ink-soft:#4B5560; --ink-faint:#8B93A0;
+    --navy:#0C2A4E; --gold:#B9902E; --gold-soft:#F3EBD3; --line:#DADDD6; --hover:#EEF1F5;
+    --fnt:'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--fnt);-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;}
+  header{background:var(--navy);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 20px;border-bottom:3px solid var(--gold);flex-wrap:wrap;}
+  header img{height:40px;width:auto;background:#fff;border-radius:6px;padding:3px;}
+  header h1{font-size:18px;margin:0;letter-spacing:.02em;text-transform:uppercase;font-weight:700;}
+  header .sub{font-size:11px;color:#C9D2DE;letter-spacing:.12em;text-transform:uppercase;}
+  header .meta{margin-left:auto;font-size:11px;color:#C9D2DE;text-align:right;}
+  main{flex:1;display:grid;grid-template-columns:360px 1fr;min-height:0;}
+  aside{background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;}
+  .filters{padding:16px;display:grid;gap:10px;border-bottom:1px solid var(--line);}
+  label.t{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);display:block;margin-bottom:4px;}
+  select,input[type=search],input[type=text]{width:100%;font:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);}
+  select:focus,input:focus{outline:2px solid var(--gold);outline-offset:0;border-color:var(--gold);}
+  .barra{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-faint);padding:8px 16px;border-bottom:1px solid var(--line);}
+  .barra .sp{flex:1;}
+  .barra button{padding:4px 8px;font-size:11px;}
+  ul#lista{list-style:none;margin:0;padding:0;overflow:auto;flex:1;}
+  ul#lista li{padding:8px 16px;border-bottom:1px solid #EFF0ED;cursor:pointer;display:flex;align-items:center;gap:10px;}
+  ul#lista li:hover{background:var(--hover);}
+  ul#lista li.sel{background:var(--gold-soft);box-shadow:inset 3px 0 0 var(--gold);}
+  ul#lista li.grupo{display:block;cursor:default;background:var(--paper);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);padding:8px 16px;}
+  ul#lista input[type=checkbox]{width:17px;height:17px;accent-color:var(--navy);flex:none;cursor:pointer;}
+  li .txt{display:flex;flex-direction:column;min-width:0;}
+  li .n{font-weight:700;font-size:14px;}
+  li .e{font-size:11px;color:var(--ink-faint);}
+  section.visor{display:flex;flex-direction:column;min-height:0;padding:16px 20px;gap:12px;}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .toolbar h2{font-size:20px;margin:0;color:var(--navy);text-transform:uppercase;}
+  .toolbar .sp{flex:1;}
+  .opciones{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
+  .opciones .campo{min-width:220px;flex:1;}
+  label.chk{display:flex;align-items:center;gap:6px;margin:0 0 10px;font-size:12px;color:var(--ink-soft);cursor:pointer;}
+  label.chk select{width:auto;font-size:13px;padding:6px 8px;}
+  button{font:inherit;font-size:13px;font-weight:700;padding:10px 16px;border-radius:6px;border:1px solid var(--navy);background:#fff;color:var(--navy);cursor:pointer;}
+  button.primary{background:var(--navy);color:#fff;}
+  button:hover:not(:disabled){filter:brightness(1.12);}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  .frame{flex:1;min-height:420px;background:#E4E6E2;border:1px solid var(--line);border-radius:8px;overflow:hidden;position:relative;}
+  .frame iframe{width:100%;height:100%;border:0;display:block;}
+  .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:14px;text-align:center;padding:24px;}
+  .status{font-size:12px;color:var(--ink-soft);min-height:16px;}
+  /* ---- foto / mapa / nombre temporales (solo para esta descarga; igual que la página) ---- */
+  .extras{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
+  .extras.off{opacity:.5;pointer-events:none;}
+  .extras-head{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--navy);margin-bottom:8px;}
+  .drops{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:10px;}
+  .drop{position:relative;display:flex;align-items:center;gap:10px;min-height:62px;margin:0;padding:8px 10px;border:1.5px dashed var(--line);
+    border-radius:8px;background:#FAFAF8;cursor:pointer;letter-spacing:0;text-transform:none;font-weight:400;color:var(--ink);}
+  .drop:hover,.drop.over{border-color:var(--gold);background:var(--gold-soft);}
+  .drop.lleno{border-style:solid;border-color:var(--gold);background:var(--gold-soft);}
+  .drop input[type=file]{display:none;}
+  .drop .mini{width:44px;height:44px;border-radius:4px;background:#E9ECEF center/cover no-repeat;flex:none;}
+  .drop .txt{display:flex;flex-direction:column;min-width:0;}
+  .drop .dt{font-size:12px;font-weight:700;color:var(--navy);}
+  .drop .dd{font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .drop .x{position:absolute;top:4px;right:6px;border:0;background:none;padding:2px 4px;font-size:14px;color:var(--ink-soft);display:none;}
+  .drop.lleno .x{display:block;}
+  .drop.nom{cursor:default;flex-direction:column;align-items:stretch;gap:4px;}
+  .drop.nom input{width:100%;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;}
+  li .tmp{color:var(--gold);font-weight:700;}
+  @media (max-width:860px){
+    html,body{height:auto;} body{display:block;} main{display:block;} .drops{grid-template-columns:1fr;}
+    ul#lista{max-height:45vh;} .frame{aspect-ratio:11 / 8.5;min-height:0;}
+  }
+  header select.sitio{width:auto;flex:none;font:inherit;font-size:13px;font-weight:700;padding:7px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;cursor:pointer;}
+  header select.sitio option{color:#12181E;}
+</style>
+</head>
+<body>
+<header>
+  <img src="assets/logo.png" alt="">
+  <div><h1>Fichas Pumas</h1><div class="sub">Inteligencia Deportiva · Pumas UNAM</div></div>
+  <select class="sitio" id="selSitio" autocomplete="off" aria-label="Tipo de fichas" onchange="location.href=this.value"><option value="../">Fichas Scouting</option><option value="./" selected>Fichas Pumas</option></select><script>addEventListener("pageshow",function(){document.getElementById("selSitio").selectedIndex=1;});</script>
+  <div class="meta" id="meta"></div>
+</header>
+<main>
+  <aside>
+    <div class="filters">
+      <div><label class="t" for="selPos">Posición</label><select id="selPos"></select></div>
+      <div><label class="t" for="txtBuscar">Buscar jugador</label><input type="search" id="txtBuscar" placeholder="Nombre…" autocomplete="off"></div>
+    </div>
+    <div class="barra"><span id="count"></span><span class="sp"></span>
+      <button type="button" id="btnTodos">Marcar todos</button><button type="button" id="btnNinguno">Ninguno</button></div>
+    <ul id="lista"></ul>
+  </aside>
+  <section class="visor">
+    <div class="toolbar">
+      <h2 id="titulo">Elige jugadores</h2><span class="sp"></span>
+      <label class="chk">Formato <select id="selFormato"><option value="png">PNG</option><option value="pdf">PDF</option></select></label>
+      <button class="primary" id="btnDescargar" disabled>⬇ Descargar seleccionados</button>
+    </div>
+    <div class="opciones">
+      <label class="chk"><input type="checkbox" id="chkPortada" checked> Incluir portada</label>
+      <div class="campo"><label class="t" for="txtTitulo">Título de la portada</label><input type="text" id="txtTitulo"></div>
+      <div class="campo"><label class="t" for="txtSub">Subtítulo (opcional)</label><input type="text" id="txtSub" placeholder="Ej. Apertura 2026 · J1–J17"></div>
+    </div>
+    <div class="extras off" id="extras">
+      <div class="extras-head">Agregar solo para esta descarga</div>
+      <div class="drops">
+        <label class="drop" data-tipo="foto"><input type="file" accept="image/*">
+          <span class="mini"></span><span class="txt"><span class="dt">Foto</span><span class="dd">Arrastra o haz clic</span></span>
+          <button type="button" class="x" title="Quitar">✕</button></label>
+        <label class="drop" data-tipo="mapa"><input type="file" accept="image/*">
+          <span class="mini"></span><span class="txt"><span class="dt">Mapa de calor</span><span class="dd">Arrastra o haz clic</span></span>
+          <button type="button" class="x" title="Quitar">✕</button></label>
+        <div class="drop nom"><span class="dt">Nombre en la ficha</span>
+          <input type="text" id="txtNombre" autocomplete="off"></div>
+      </div>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="frame"><iframe id="preview" title="Vista previa"></iframe>
+      <div class="empty" id="empty">Haz clic en un nombre para ver su ficha. Marca las casillas de los que quieras descargar.</div></div>
+  </section>
+</main>
+<script src="../vendor/pdf-lib.min.js"></script>
+<script>
+  // Siempre la versión más nueva de los datos y del código (evita que el navegador use la copia guardada).
+  (function () {
+    var v = Date.now();
+    ['data/fichas.js', 'informe.js', 'pumas.js'].forEach(function (f) {
+      var s = document.createElement('script');
+      s.src = f + '?v=' + v;
+      s.async = false;
+      document.body.appendChild(s);
+    });
+  })();
+</script>
+</body>
+</html>
