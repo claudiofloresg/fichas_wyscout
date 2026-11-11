@@ -545,6 +545,34 @@ def cargar_lista(path, rep):
     return filas
 
 
+def cargar_eliminadas(path, rep):
+    """Pestaña "Eliminadas" de lista_fichas (la llena el botón "Eliminar ficha" de la página).
+    Devuelve {(jugador, posición): {equipos}} (slugs; equipo vacío = cualquiera). Solo afecta a las fichas de los Excel."""
+    try:
+        hojas = pd.read_excel(path, sheet_name=None, dtype=object)
+    except Exception as e:                                  # noqa: BLE001
+        rep["lista"].append(f"no pude leer la pestaña Eliminadas ({e})")
+        return {}
+    df = next((h for n, h in hojas.items() if "eliminad" in slug(n)), None)
+    if df is None:
+        return {}
+    cols = {slug(c): c for c in df.columns}
+    cj, ce, cp = cols.get("jugador"), cols.get("equipo"), cols.get("posicion")
+    if not (cj and cp):
+        rep["lista"].append("la pestaña Eliminadas no tiene las columnas Jugador y Posición")
+        return {}
+    out = {}
+    for _, r in df.iterrows():
+        if es_vacio(r[cj]) or es_vacio(r[cp]):
+            continue
+        pos = posicion_de(str(r[cp])) or str(r[cp])
+        eq = "" if not ce or es_vacio(r[ce]) else slug(r[ce])
+        out.setdefault((slug(r[cj]), slug(pos)), set()).add(eq)
+    if out:
+        print(f"  Fichas eliminadas desde la página: {len(out)}")
+    return out
+
+
 def clave_lista(id_, liga, posicion):
     """Misma clave que usan la página y el Apps Script para identificar un renglón de la lista."""
     n = lambda t: re.sub(r"\s+", " ", unicodedata.normalize("NFKD", str(t or "")).encode("ascii", "ignore")  # noqa: E731
@@ -602,6 +630,7 @@ def grupos_lista(filas, base, rep):
         d = fila.to_dict()
         d["_completo"] = f["completo"]
         d["_liga"] = liga
+        d["_fila"] = {"id": f["id"], "liga": f["liga"], "posicion": f["posicion"]}   # renglón tal cual en la hoja
         d["_agregado"] = f"{f['fecha'] or '0000'}|{f['renglon']:05d}"   # para ordenar: lo más nuevo arriba (sin fecha: al final)
         d["_ficha"] = {"id": d[C.COL_JUGADOR], "equipo": d.get(C.COL_EQUIPO), "liga": liga, "posicion": posicion,
                        "comparar": comparar, "liga_ref": ref or cfg("LIGA_REFERENCIA", "Liga MX"),
@@ -727,7 +756,7 @@ def main():
     for d in list(OUT_IMG.values()) + [os.path.dirname(OUT_DATA)]:
         os.makedirs(d, exist_ok=True)
     rep = {k: [] for k in ("lista", "pumas", "sin_posicion", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar", "radar_extra",
-                           "radar_ignorado", "paises", "columnas", "repetidos", "extra_sin_jugador")}
+                           "radar_ignorado", "paises", "columnas", "repetidos", "extra_sin_jugador", "eliminadas")}
 
     # ---- de dónde salen las fichas
     arch_lista, arch_base = cfg("ARCHIVO_LISTA"), cfg("ARCHIVO_BASE")
@@ -761,6 +790,7 @@ def main():
         exportar_opciones(base)
     if modo == "lista":
         filas = cargar_lista(ruta(arch_lista), rep)
+        rep["_eliminadas"] = cargar_eliminadas(ruta(arch_lista), rep)
         for posicion, df in grupos_lista(filas, base, rep).items():
             grupos.append((posicion, df, "lista_fichas"))
         # Las fichas de los Excel por posición se conservan (si un jugador está en los dos, gana la lista)
@@ -857,6 +887,11 @@ def armar(rep, modo, grupos, base, mod_radares):
                 rep["sin_nombre"].append(f"[{posicion}] {nom_x}")
             pid = slug(nom_x)
             jid = slug(f"{nom_x} {equipo or ''}")
+            if origen not in ("lista_fichas", "pumas"):          # fichas de Excel quitadas con "Eliminar ficha"
+                eqs = rep.get("_eliminadas", {}).get((pid, slug(posicion)))
+                if eqs is not None and ("" in eqs or slug(equipo or "") in eqs):
+                    rep["eliminadas"].append(f"[{posicion}] {nom_x} ({equipo})")
+                    continue
             # Los de Pumas van en su propio apartado (no salen en Delantero, Defensa…)
             if MODO_PUMAS:
                 pos = posiciones.setdefault("__pumas__", {"id": "pumas", "label": etiqueta_pumas, "pumas": True,
@@ -961,6 +996,7 @@ def armar(rep, modo, grupos, base, mod_radares):
                 "video": videos.get(slug(nom_x)),
                 "nombrePortada": nombre_portada(nom_x, completo),
                 "radares": radares,
+                "fila": (df.at[i, "_fila"] if "_fila" in df.columns and isinstance(df.at[i, "_fila"], dict) else None),
                 "agregado": (df.at[i, "_agregado"] if "_agregado" in df.columns and not es_vacio(df.at[i, "_agregado"])
                              else None),
             })
@@ -1031,6 +1067,7 @@ def armar(rep, modo, grupos, base, mod_radares):
         "radar_extra": "Carpetas con más radares del máximo (MAX_RADARES)",
         "radar_ignorado": "Imágenes en carpetas de radares que no se usan (el vs debe llamarse <Jugador>_<Otro>.png)",
         "extra_sin_jugador": "Nombres en los Excel de datos extra que no están en ningún Excel de posición",
+        "eliminadas": "Fichas de Excel que no salen porque se eliminaron desde la página (pestaña Eliminadas de lista_fichas)",
     }
     with open(REPORTE, "w", encoding="utf-8") as f:
         f.write(f"Reporte de actualización — {payload['generado']}\n")

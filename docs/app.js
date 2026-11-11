@@ -153,7 +153,7 @@
     document.querySelectorAll('#lista li').forEach((li) => li.classList.toggle('sel', li.dataset.id === j.id));
     $('titulo').textContent = j.nombre;
     $('subtitulo').textContent = [j.equipo, j.posicion, `${j.minutos.toLocaleString('es-MX')} min`].filter(Boolean).join(' · ');
-    btnPdf.disabled = false; $('btnVer').disabled = false;
+    btnPdf.disabled = false; $('btnVer').disabled = false; $('btnEliminar').disabled = false;
     const u = new URL(location.href);
     u.searchParams.set('p', pos.id); u.searchParams.set('j', j.id);
     history.replaceState(null, '', u);
@@ -303,7 +303,58 @@
     ocupado = false; btnEquipo.disabled = false;
   });
 
-  selPos.addEventListener('change', () => { actual = null; cargarPos(); pintarExtras(); });
+  // ---------------------------------------------------------------- eliminar ficha (lo hace nueva.js: PIN + Apps Script + publicar)
+  const btnEliminar = $('btnEliminar');
+  btnEliminar.addEventListener('click', async () => {
+    if (!actual || ocupado || !window.Fichas || !window.Fichas.eliminar) return;
+    const j = actual;
+    btnEliminar.disabled = true;
+    let hecho = false;
+    try { hecho = await window.Fichas.eliminar(j); } catch (e) { status.textContent = 'Error: ' + e.message; }
+    if (!hecho) { btnEliminar.disabled = !actual; return; }
+    sacar(new Set([j]), `Se eliminó la ficha de ${j.nombre}.`);
+  });
+
+  // quita fichas de la página al momento (sin esperar a que GitHub vuelva a publicar)
+  function sacar(js, aviso) {
+    if (!js.size) return;
+    D.posiciones.forEach((p) => { p.jugadores = p.jugadores.filter((x) => !js.has(x)); });
+    selPos.querySelectorAll('option').forEach((o) => {
+      const p = D.posiciones.find((x) => x.id === o.value);
+      if (p) o.textContent = `${p.label} (${p.jugadores.length})`;
+    });
+    if (actual && js.has(actual)) {
+      actual = null;
+      if (urlPrev) { URL.revokeObjectURL(urlPrev); urlPrev = null; }
+      frame.removeAttribute('src'); empty.style.display = '';
+      empty.textContent = aviso || 'Esta ficha se eliminó.';
+      $('titulo').textContent = 'Selecciona un jugador'; $('subtitulo').textContent = '';
+      btnPdf.disabled = true; $('btnVer').disabled = true; btnEliminar.disabled = true;
+      const u = new URL(location.href); u.searchParams.delete('j'); history.replaceState(null, '', u);
+      pintarExtras();
+    }
+    pintarLista();
+  }
+
+  // Eliminadas (pestaña "Eliminadas" de lista_fichas, vía nueva.js): se ocultan las que se eliminaron DESPUÉS
+  // de generar estos datos. Las anteriores ya las quitó GitHub; si una sigue aquí es que se volvió a agregar.
+  const aOrden = (t) => { const m = String(t || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+    return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')} ${m[4].padStart(2, '0')}:${m[5]}` : ''; };
+  function ocultarEliminadas(lista) {
+    const gen = aOrden(D.generado);
+    const fuera = new Set((lista || []).filter((e) => !gen || aOrden(e.fecha) >= gen)
+      .map((e) => [norm(e.jugador), norm(e.posicion), norm(e.equipo)].join('|')));
+    if (!fuera.size) return;
+    const js = new Set();
+    D.posiciones.forEach((p) => p.jugadores.forEach((j) => {
+      const k = [norm(j.nombreExcel), norm(j.posicion)].join('|');
+      if (fuera.has(k + '|' + norm(j.equipo)) || fuera.has(k + '|')) js.add(j);
+    }));
+    sacar(js);
+  }
+  window.FichasApp = { ocultarEliminadas };
+
+  selPos.addEventListener('change', () => { actual = null; cargarPos(); pintarExtras(); $('btnEliminar').disabled = true; });
   txt.addEventListener('input', pintarLista);
 
   // enlace directo: ?p=<posición>&j=<jugador>

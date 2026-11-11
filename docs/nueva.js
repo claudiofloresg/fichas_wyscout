@@ -313,7 +313,7 @@
         corriendo = true; botonPublicar();
         guardar('publicando', '1');
         ponerEstado('corre', [`${textoEstado[r.run.status] || r.run.status} (iniciada ${fecha})`]);
-        encabezado('corre', leer('accionFichas') === 'actualizar' ? '⏳ Actualizando…' : '⏳ Publicando…');
+        encabezado('corre', textoCorre(leer('accionFichas')));
         programar(15000);
         return;
       }
@@ -383,13 +383,58 @@
         if (!r.run || r.run.status === 'completed') throw e;
       }
       pendiente = false; pintarFilas();
-      generadoAntes = (window.FICHAS || {}).generado; esperaPagina = 0;
-      guardar('publicando', '1'); guardar('generadoAntes', generadoAntes); guardar('accionFichas', accion);
-      ponerEstado('corre', ['En cola… (puedes cerrar esta ventana)']);
-      encabezado('corre', accion === 'publicar' ? '⏳ Publicando…' : '⏳ Actualizando…');
-      programar(12000);
+      enCola(accion);
     } catch (e) { corriendo = false; botonPublicar(); ponerEstado('mal', [e.message]); }
   }
+  const textoCorre = (accion) => ({ publicar: '⏳ Publicando…', actualizar: '⏳ Actualizando…', eliminar: '⏳ Eliminando…' })[accion] || '⏳ Publicando…';
+  function enCola(accion) {
+    generadoAntes = (window.FICHAS || {}).generado; esperaPagina = 0;
+    guardar('publicando', '1'); guardar('generadoAntes', generadoAntes); guardar('accionFichas', accion);
+    ponerEstado('corre', ['En cola… (puedes cerrar esta ventana)']);
+    encabezado('corre', textoCorre(accion));
+    programar(12000);
+  }
+
+  // ------------------------------------------------------------------ eliminar ficha (botón "🗑 Eliminar ficha" de app.js)
+  // Lista: se borra su renglón. Excel: se anota en la pestaña "Eliminadas". En los dos casos se publica solo.
+  async function eliminar(j) {
+    if (corriendo) { alert('Hay una publicación en curso. Espera a que termine y vuelve a intentarlo.'); return false; }
+    if (!(await conPin())) return false;
+    if (!confirm(`¿Eliminar la ficha de ${j.nombre} (${j.posicion}, ${j.equipo || 'sin equipo'})?\n`
+      + 'Se quita de la página y se publica sola (2 a 5 minutos).')) return false;
+    corriendo = true; botonPublicar();
+    encabezado('corre', '⏳ Eliminando…');
+    try {
+      try {
+        await api('eliminar', { jugador: j.nombreExcel, equipo: j.equipo || '', posicion: j.posicion, liga: j.liga || '',
+          nombre: j.nombre || '', fila: j.fila || null }, 1);        // sin reintentos: podría mandarse dos veces
+      } catch (e) {
+        if (!/respuesta del servidor/.test(e.message)) throw e;
+        await new Promise((ok) => setTimeout(ok, 4000));
+        const r = await api('estado');
+        if (!r.run || r.run.status === 'completed') throw e;
+      }
+      enCola('eliminar');
+      return true;
+    } catch (e) {
+      corriendo = false; botonPublicar(); encabezado();
+      alert('No se pudo eliminar: ' + e.message);
+      return false;
+    }
+  }
+  window.Fichas = { eliminar };
+
+  // Fichas eliminadas que GitHub todavía no quita de la página: se ocultan al momento para todos.
+  // Si Google no responde, la página sigue normal.
+  (async () => {
+    try {
+      const r = await fetch(`${URL_API}?accion=eliminadas&ts=${Date.now()}`);
+      const j = await r.json();
+      if (j.ok && window.FichasApp) window.FichasApp.ocultarEliminadas(j.eliminadas);
+    } catch (e) { /* sin conexión con Google: no se oculta nada */ }
+  })();
+  const btnEl = $('btnEliminar');
+  if (btnEl) btnEl.hidden = false;
   btnPub.addEventListener('click', () => { if (filas.length && pendiente) lanzar('publicar'); });
   btnAct.addEventListener('click', () => lanzar('actualizar'));
 
