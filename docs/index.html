@@ -21,6 +21,8 @@
   header h1{font-size:18px;margin:0;letter-spacing:.02em;text-transform:uppercase;font-weight:700;}
   header .sub{font-size:11px;color:#C9D2DE;letter-spacing:.12em;text-transform:uppercase;}
   header .meta{margin-left:auto;font-size:11px;color:#C9D2DE;text-align:right;}
+  header select.sitio{width:auto;flex:none;font:inherit;font-size:13px;font-weight:700;padding:7px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;cursor:pointer;}
+  header select.sitio option{color:#12181E;}
   main{flex:1;display:grid;grid-template-columns:360px 1fr;min-height:0;}
   aside{background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;}
   .filters{padding:16px;display:grid;gap:10px;border-bottom:1px solid var(--line);}
@@ -151,6 +153,9 @@
     <h1>Fichas de Jugadores · Scouting</h1>
     <div class="sub">Inteligencia Deportiva Pumas</div>
   </div>
+  <select class="sitio" id="selSitio" autocomplete="off" aria-label="Tipo de fichas" onchange="location.href=this.value">
+    <option value="./" selected>Fichas Scouting</option><option value="pumas/">Fichas Pumas</option></select>
+  <script>addEventListener('pageshow', function () { document.getElementById('selSitio').selectedIndex = 0; });</script>
   <div class="meta" id="meta"></div>
 </header>
 

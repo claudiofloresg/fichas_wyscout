@@ -42,6 +42,11 @@ jobs:
       - name: Generar la página
         run: python build.py
 
+      # Fichas de Pumas en <página>/pumas/. Si falla, se publica lo demás igual.
+      - name: Generar fichas de Pumas
+        continue-on-error: true
+        run: python build.py --pumas --web
+
       - name: Guardar reporte
         if: always()
         uses: actions/upload-artifact@v4
@@ -57,8 +62,9 @@ jobs:
           git add -A
           # la fecha de "generado" y el ?v= cambian siempre: no cuentan como cambio
           quitar='s/"generado":"[^"]*"//'
-          if git diff --cached --quiet -- . ':(exclude)docs/index.html' ':(exclude)docs/data/fichas.js' \
-             && [ "$(git show HEAD:docs/data/fichas.js 2>/dev/null | sed "$quitar")" = "$(sed "$quitar" docs/data/fichas.js)" ]; then
+          igual() { [ "$(git show HEAD:"$1" 2>/dev/null | sed "$quitar")" = "$(sed "$quitar" "$1" 2>/dev/null)" ]; }
+          if git diff --cached --quiet -- . ':(exclude)docs/index.html' ':(exclude)docs/data/fichas.js' ':(exclude)docs/pumas/data/fichas.js' \
+             && igual docs/data/fichas.js && igual docs/pumas/data/fichas.js; then
             echo "Sin cambios en los datos; no se publica."
             exit 0
           fi

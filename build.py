@@ -64,8 +64,10 @@ from paises import PAISES
 BASE = os.path.dirname(os.path.abspath(__file__))
 # python build.py --pumas  -> fichas de jugadores de Pumas SOLO en esta compu (carpeta pumas_local/, no se sube
 # a GitHub ni toca la página). Sin --pumas -> la página de siempre (docs/), ya sin jugadores de Pumas.
+# python build.py --pumas --web  -> las mismas fichas de Pumas para la página en internet (docs/pumas/ = <página>/pumas/).
 MODO_PUMAS = "--pumas" in sys.argv
-DOCS = os.path.join(BASE, "pumas_local" if MODO_PUMAS else "docs")
+MODO_WEB = MODO_PUMAS and "--web" in sys.argv
+DOCS = os.path.join(BASE, "docs", "pumas") if MODO_WEB else os.path.join(BASE, "pumas_local" if MODO_PUMAS else "docs")
 OUT_DATA = os.path.join(DOCS, "data", "fichas.js")
 OUT_OPCIONES = os.path.join(DOCS, "data", "opciones.js")
 OUT_IMG = {k: os.path.join(DOCS, "img", k) for k in ("fotos", "mapas", "radares")}
@@ -817,7 +819,7 @@ def main():
 
 
 def main_pumas(rep, arch_base):
-    """Solo las fichas de Pumas, en pumas_local/ (la página no se toca)."""
+    """Solo las fichas de Pumas, en pumas_local/ (la página no se toca) o, con --web, en docs/pumas/."""
     if not (arch_base and os.path.isfile(ruta(arch_base))):
         print(f"[ERROR] No encuentro la base de datos (ARCHIVO_BASE = {arch_base}).\n"
               "  Pon gdrive_key.json en esta carpeta, o ARCHIVO_BASE en config_local.py.")
@@ -834,9 +836,46 @@ def main_pumas(rep, arch_base):
     copiar_pagina_pumas()
 
 
+# Menú para cambiar entre la página de scouting y la de Pumas (solo en internet)
+MENU_SITIO = ('<select class="sitio" id="selSitio" autocomplete="off" aria-label="Tipo de fichas" '
+              'onchange="location.href=this.value">'
+              '<option value="../">Fichas Scouting</option><option value="./" selected>Fichas Pumas</option></select>'
+              '<script>addEventListener("pageshow",function(){document.getElementById("selSitio").selectedIndex=1;});</script>')
+CSS_SITIO = ("  header select.sitio{width:auto;flex:none;font:inherit;font-size:13px;font-weight:700;padding:7px 10px;border-radius:6px;"
+             "border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;cursor:pointer;}\n"
+             "  header select.sitio option{color:#12181E;}\n")
+
+
+def copiar_pagina_pumas_web():
+    """docs/pumas/: la página de Pumas TAL CUAL (herramientas/pumas) para internet. Cambia solo las rutas a las
+    librerías (usa las de docs/vendor, sin copiarlas) y agrega el menú Scouting / Pumas.
+    En GitHub Actions no está herramientas/ (no se sube): se conserva la que ya está en docs/pumas/."""
+    import shutil
+    src = os.path.join(BASE, "herramientas", "pumas")
+    if not os.path.isdir(src):
+        if not os.path.isfile(os.path.join(DOCS, "index.html")):
+            print("[AVISO] Falta la página de Pumas (docs/pumas/index.html). Corre actualizar.bat en tu compu una vez.")
+        else:
+            print("  Página de Pumas: se conserva docs/pumas/index.html y pumas.js")
+    else:
+        for f in os.listdir(src):
+            t = open(os.path.join(src, f), encoding="utf-8").read()
+            t = re.sub(r"""(['"])vendor/""", r"\1../vendor/", t)            # librerías de la página principal
+            if f == "index.html":
+                t = t.replace("solo en esta compu", "Pumas UNAM")
+                t = t.replace("</style>", CSS_SITIO + "</style>", 1)
+                t = t.replace('<div class="meta" id="meta"></div>', MENU_SITIO + '\n  <div class="meta" id="meta"></div>', 1)
+            with open(os.path.join(DOCS, f), "w", encoding="utf-8", newline="\n") as g:
+                g.write(t)
+    shutil.copy2(os.path.join(BASE, "docs", "informe.js"), os.path.join(DOCS, "informe.js"))
+    shutil.copytree(os.path.join(BASE, "docs", "assets"), os.path.join(DOCS, "assets"), dirs_exist_ok=True)
+
+
 def copiar_pagina_pumas():
     """La página local de Pumas: herramientas/pumas/* + lo que comparte con la página (diseño, fondo, librerías)."""
     import shutil
+    if MODO_WEB:
+        return copiar_pagina_pumas_web()
     src = os.path.join(BASE, "herramientas", "pumas")
     for f in os.listdir(src):
         shutil.copy2(os.path.join(src, f), os.path.join(DOCS, f))
@@ -1076,7 +1115,7 @@ def armar(rep, modo, grupos, base, mod_radares):
             f.write(f"\n=== {t}: {len(items)}\n" + "".join(f"  - {x}\n" for x in items))
 
     n = sum(len(p["jugadores"]) for p in lista)
-    print(f"\nModo: {({'lista': 'lista de fichas', 'pumas': 'fichas de Pumas (solo local, pumas_local/)'}).get(modo, 'Excel por posición')}")
+    print(f"\nModo: {({'lista': 'lista de fichas', 'pumas': 'fichas de Pumas (' + ('página, docs/pumas/' if MODO_WEB else 'solo local, pumas_local/') + ')'}).get(modo, 'Excel por posición')}")
     print(f"Listo -> {os.path.relpath(OUT_DATA, BASE)}  ({n} fichas en {len(lista)} posiciones, "
           f"{os.path.getsize(OUT_DATA) / 1024:.0f} KB)")
     for k in ("lista", "pumas", "sin_posicion", "columnas", "paises", "sin_nombre", "sin_foto", "sin_mapa", "sin_radar"):

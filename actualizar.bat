@@ -33,6 +33,9 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+echo == 2b/3 Generando fichas de Pumas para la pagina (/pumas/) ==
+python build.py --pumas --web
+if errorlevel 1 echo [AVISO] No se generaron las fichas de Pumas; se publica lo demas.
 echo.
 echo == 3/3 Publicando en GitHub Pages ==
 git add -A
