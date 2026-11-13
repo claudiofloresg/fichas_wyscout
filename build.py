@@ -394,23 +394,35 @@ def traducir_pais(p, rep):
     return p
 
 
+# Wyscout pone 0 / "unknown" cuando no tiene el dato: en la ficha sale este texto.
+SIN_DATO = ("unknown", "desconocido", "-", "0", "n/a", "na", "none", "null")
+
+
 def fmt_dato(v, formato, posicion, rep):
     if formato == "posicion":
         return posicion
+    desconocido = cfg("TEXTO_DESCONOCIDO", "Desconocido")
+    if formato in ("edad", "cm", "kg", "pie", "pais") and (es_vacio(v) or str(v).strip().lower() in SIN_DATO):
+        return desconocido
     if es_vacio(v):
         return None
     n = to_number(v)
+    if formato in ("edad", "cm", "kg") and (math.isnan(n) or n <= 0):
+        return desconocido
     if formato == "edad":
-        return None if math.isnan(n) else f"{int(n)} años"
+        return f"{int(n)} años"
     if formato == "cm":
-        return None if math.isnan(n) else f"{int(round(n))} cm"
+        return f"{int(round(n))} cm"
     if formato == "kg":
-        return None if math.isnan(n) else f"{int(round(n))} kg"
+        return f"{int(round(n))} kg"
     if formato == "pie":
         p = str(v).strip()
         return {"right": "Derecho", "left": "Izquierdo", "both": "Ambidiestro"}.get(p.lower(), p.capitalize())
     if formato == "pais":
-        return cfg("SEPARADOR_PAISES", " – ").join(traducir_pais(p, rep) for p in str(v).split(",") if p.strip())
+        paises = [p for p in str(v).split(",") if p.strip() and p.strip().lower() not in SIN_DATO]
+        if not paises:
+            return desconocido
+        return cfg("SEPARADOR_PAISES", " – ").join(traducir_pais(p, rep) for p in paises)
     if formato == "fecha":
         if isinstance(v, (pd.Timestamp, datetime, date)):
             return v.strftime("%d/%m/%Y")
