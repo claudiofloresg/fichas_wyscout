@@ -78,15 +78,18 @@
     html,body{height:auto;} body{display:block;} main{display:block;} .drops{grid-template-columns:1fr;}
     ul#lista{max-height:45vh;} .frame{aspect-ratio:11 / 8.5;min-height:0;}
   }
-  header select.sitio{width:auto;flex:none;font:inherit;font-size:13px;font-weight:700;padding:7px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;cursor:pointer;}
-  header select.sitio option{color:#12181E;}
+  header nav.secciones{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;}
+  header nav.secciones a{background:#fff;color:var(--navy);border:2px solid #fff;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;}
+  header nav.secciones a{opacity:.55;transition:opacity .15s;}
+  header nav.secciones a:hover,header nav.secciones a.activa{opacity:1;}
+  header nav.secciones + .meta{margin-left:14px;}
 </style>
 </head>
 <body>
 <header>
   <img src="assets/logo.png" alt="">
   <div><h1>Fichas Pumas</h1><div class="sub">Inteligencia Deportiva · Pumas UNAM</div></div>
-  <select class="sitio" id="selSitio" autocomplete="off" aria-label="Sección" onchange="location.href=this.value"><option value="../">Varonil</option><option value="../femenil/">Femenil</option><option value="./" selected>Pumas</option></select><script>addEventListener("pageshow",function(){document.getElementById("selSitio").selectedIndex=2;});</script>
+  <nav class="secciones" aria-label="Sección"><a href="../">Varonil</a><a href="../femenil/">Femenil</a><a href="./" class="activa" aria-current="page">Pumas</a></nav>
   <div class="meta" id="meta"></div>
 </header>
 <main>
