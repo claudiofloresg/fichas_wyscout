@@ -83,7 +83,8 @@
   // ------------------------------------------------------------------ botón en el encabezado
   const btnNueva = el('button', { id: 'btnNueva', type: 'button', class: 'hdr' }, '＋ Nueva ficha');
   const meta = $('meta');
-  meta.parentNode.insertBefore(btnNueva, meta);
+  const lugar = $('accionesSide');                     // arriba de la lista de jugadores
+  if (lugar) lugar.append(btnNueva); else meta.parentNode.insertBefore(btnNueva, meta);
 
   // ------------------------------------------------------------------ opciones (ligas, IDs, Pumas)
   let OP = null;
@@ -187,8 +188,7 @@
         tbody.appendChild(t2);
       }
     });
-    cuenta.textContent = `${filas.length} ficha${filas.length === 1 ? '' : 's'} en la lista`
-      + (filas.length ? (pendiente ? ' · hay cambios sin publicar' : ' · todo publicado') : '');
+    cuenta.textContent = '';                              // (sin conteo de fichas: satura la vista)
     botonPublicar();
     if (!filas.length) { const tr = el('tr'); tr.appendChild(el('td', { colspan: 5, class: 'vacio' }, 'La lista está vacía.')); tbody.appendChild(tr); }
   }
@@ -284,11 +284,11 @@
   // "Publicar fichas" = subir los cambios de la lista. "Actualizar datos" = volver a bajar TODO de Drive
   // (base de datos, fotos, mapas, radares, stats manuales) y rehacer las fichas, aunque la lista no cambie.
   // va en el encabezado (pantalla principal), junto a "＋ Nueva ficha"
-  const btnAct = el('button', { type: 'button', id: 'btnActualizar', class: 'hdr hdr2',
-    title: 'Vuelve a bajar la base de datos y todo lo de Drive, y rehace las fichas' }, '⟳ Actualizar datos');
+  const btnAct = el('button', { type: 'button', id: 'btnActualizar', class: 'hdr hdr2', 'aria-label': 'Actualizar datos',
+    title: 'Actualizar datos: vuelve a bajar la base de datos y todo lo de Drive, y rehace las fichas' }, '⟳');
   btnNueva.after(btnAct);
   const metaFecha = (window.FICHAS || {}).generado;
-  if (metaFecha) btnAct.title = `Datos actualizados: ${metaFecha}. Vuelve a bajar la base de datos y todo lo de Drive.`;
+  if (metaFecha) btnAct.title = `Actualizar datos (datos del ${metaFecha}): vuelve a bajar la base de datos y todo lo de Drive.`;
   meta.remove();                                       // la fecha queda en el tooltip del botón
 
   function botonPublicar() {
@@ -347,9 +347,10 @@
         return;
       }
       esperaPagina += 1;
-      if (esperaPagina > 16) {
+      if (esperaPagina > 8) {                                  // ≈2 min: GitHub Pages ya debió servir la versión nueva
         guardar('publicando', null);
-        ponerEstado('', ['Terminó, pero la página no cambió (no había cambios en los datos).']);
+        ponerEstado('', ['Terminó, pero esta sección no cambió (no había cambios, o sus fichas tienen un problema). ',
+          el('a', { href: r.run.url, target: '_blank', rel: 'noopener' }, 'Ver reporte')]);
         encabezado();
         return;
       }

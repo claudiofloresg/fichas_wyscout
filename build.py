@@ -748,6 +748,7 @@ def grupos_pumas(base, rep):
     La posición sale de la 1a posición de Wyscout (CF -> Delantero, LCB -> Defensa Central…) o de PUMAS_POSICION.
     Radares: individual + vs promedio de la liga (sin comparativo)."""
     import radares as R
+    R.LIGAS_ANTERIORES.update({R._slug(k): v for k, v in (cfg("LIGAS_ANTERIORES", {}) or {}).items()})
     ref = liga_referencia(base)
     ligas = cfg("PUMAS_LIGAS") or [ref]
     minimo = cfg("PUMAS_MIN_MINUTOS", 1)
@@ -828,6 +829,7 @@ def main():
             sys.exit(1)
     if modo == "lista" or (arch_base and os.path.isfile(ruta(arch_base))):
         import radares as R
+        R.LIGAS_ANTERIORES.update({R._slug(k): v for k, v in (cfg("LIGAS_ANTERIORES", {}) or {}).items()})
         mod_radares = cargar_modulo_radares(rep) if modo == "lista" else None
         print(f"Base de datos: {os.path.basename(arch_base)}")
         base = R.Base(ruta(arch_base))
@@ -869,6 +871,7 @@ def main_pumas(rep, arch_base):
               "  Pon gdrive_key.json en esta carpeta, o ARCHIVO_BASE en config_local.py.")
         sys.exit(1)
     import radares as R
+    R.LIGAS_ANTERIORES.update({R._slug(k): v for k, v in (cfg("LIGAS_ANTERIORES", {}) or {}).items()})
     print(f"Base de datos: {os.path.basename(arch_base)}")
     base = R.Base(ruta(arch_base))
     mod_radares = cargar_modulo_radares(rep)
@@ -885,24 +888,29 @@ SECCIONES = (("Varonil", ""), ("Femenil", "femenil/"), ("Pumas", "pumas/"))
 
 
 def menu_sitio(actual):
-    """<select> del encabezado, visto desde la sección `actual` (Varonil, Femenil o Pumas)."""
+    """Botones del encabezado (Varonil / Femenil / Pumas), vistos desde la sección `actual`."""
     pref = "" if actual == "Varonil" else "../"
-    ops, i_act = [], 0
-    for i, (nombre, carpeta) in enumerate(SECCIONES):
-        destino = "./" if nombre == actual else (pref + carpeta) or "./"
-        sel = " selected" if nombre == actual else ""
+    ligas = []
+    for nombre, carpeta in SECCIONES:
         if nombre == actual:
-            i_act = i
-        ops.append(f'<option value="{destino}"{sel}>{nombre}</option>')
-    return ('<select class="sitio" id="selSitio" autocomplete="off" aria-label="Sección" '
-            'onchange="location.href=this.value">' + "".join(ops) + '</select>'
-            f'<script>addEventListener("pageshow",function(){{document.getElementById("selSitio").selectedIndex={i_act};}});</script>')
+            ligas.append(f'<a href="./" class="activa" aria-current="page">{nombre}</a>')
+        else:
+            ligas.append(f'<a href="{(pref + carpeta) or "./"}">{nombre}</a>')
+    return '<nav class="secciones" aria-label="Sección">' + "".join(ligas) + '</nav>'
+
+
+# el menú viejo (select) o el nuevo (nav): para reemplazarlo en páginas ya generadas
+RE_MENU = re.compile(r'<select class="sitio".*?</script>|<nav class="secciones".*?</nav>', re.S)
 
 
 MENU_SITIO = menu_sitio("Pumas")
-CSS_SITIO = ("  header select.sitio{width:auto;flex:none;font:inherit;font-size:13px;font-weight:700;padding:7px 10px;border-radius:6px;"
-             "border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;cursor:pointer;}\n"
-             "  header select.sitio option{color:#12181E;}\n")
+CSS_SITIO = ("  header nav.secciones{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;}\n"
+             "  header nav.secciones a{background:#fff;color:var(--navy);border:2px solid #fff;border-radius:6px;padding:8px 18px;"
+             "font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;}\n"
+             "  header nav.secciones a{opacity:.55;transition:opacity .15s;}\n"
+             "  header nav.secciones a:hover,header nav.secciones a.activa{opacity:1;}\n"
+             "  header nav.secciones + .meta{margin-left:14px;}\n")
+RE_CSS_SITIO = re.compile(r"^  header nav\.secciones[^\n]*\n", re.M)
 
 
 def copiar_pagina_pumas_web():
@@ -918,7 +926,9 @@ def copiar_pagina_pumas_web():
             print("  Página de Pumas: se conserva docs/pumas/index.html y pumas.js (solo se actualiza su menú)")
             ip = os.path.join(DOCS, "index.html")
             t = open(ip, encoding="utf-8").read()
-            t2 = re.sub(r"<select class=\"sitio\".*?</script>", lambda m: MENU_SITIO, t, count=1, flags=re.S)
+            t2 = RE_MENU.sub(lambda m: MENU_SITIO, t, count=1)
+            t2 = RE_CSS_SITIO.sub("", t2)                               # estilo del menú: siempre el actual
+            t2 = t2.replace("</style>", CSS_SITIO + "</style>", 1)
             if t2 != t:
                 with open(ip, "w", encoding="utf-8", newline="\n") as g:
                     g.write(t2)
@@ -942,7 +952,7 @@ def copiar_pagina_femenil():
     import shutil
     t = open(os.path.join(BASE, "docs", "index.html"), encoding="utf-8").read()
     t = re.sub(r"""(src|href)="(vendor|assets)/""", r'\1="../\2/', t)
-    t = re.sub(r"<select class=\"sitio\".*?</script>", lambda m: menu_sitio("Femenil"), t, count=1, flags=re.S)
+    t = RE_MENU.sub(lambda m: menu_sitio("Femenil"), t, count=1)
     t = t.replace("['data/fichas.js', 'informe.js', 'app.js', 'config_web.js', 'nueva.js']",
                   "['data/fichas.js', '../informe.js', '../app.js', '../config_web.js', '../nueva.js']")
     t = t.replace("<script src=\"../vendor/pdf-lib.min.js\"></script>",
