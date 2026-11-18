@@ -15,6 +15,8 @@ GUIA_FICHAS.pdf
 
 # GitHub Actions (descarga de Drive)
 datos_drive/
+datos_drive_femenil/
+reporte_femenil.txt
 gdrive_key.json
 *.json.key
 config_auto.py
@@ -25,3 +27,4 @@ fichas_pumas.bat
 # Fichas de Pumas: SOLO en esta compu (fichas_pumas.bat)
 pumas_local/
 reporte_pumas.txt
+fichas_pumas.command

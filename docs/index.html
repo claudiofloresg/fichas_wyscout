@@ -153,8 +153,8 @@
     <h1>Fichas de Jugadores · Scouting</h1>
     <div class="sub">Inteligencia Deportiva Pumas</div>
   </div>
-  <select class="sitio" id="selSitio" autocomplete="off" aria-label="Tipo de fichas" onchange="location.href=this.value">
-    <option value="./" selected>Fichas Scouting</option><option value="pumas/">Fichas Pumas</option></select>
+  <select class="sitio" id="selSitio" autocomplete="off" aria-label="Sección" onchange="location.href=this.value">
+    <option value="./" selected>Varonil</option><option value="femenil/">Femenil</option><option value="pumas/">Pumas</option></select>
   <script>addEventListener('pageshow', function () { document.getElementById('selSitio').selectedIndex = 0; });</script>
   <div class="meta" id="meta"></div>
 </header>
@@ -168,7 +168,6 @@
         <input type="search" id="txtBuscar" placeholder="Nombre o equipo…" autocomplete="off">
       </div>
     </div>
-    <div class="count" id="count"></div>
     <ul id="lista"></ul>
   </aside>
 
@@ -176,7 +175,6 @@
     <div class="toolbar">
       <div>
         <h2 id="titulo">Selecciona un jugador</h2>
-        <div class="pos" id="subtitulo"></div>
       </div>
       <div class="sp"></div>
       <label class="chk"><input type="checkbox" id="chkPortada" checked> Incluir portada</label>
@@ -187,7 +185,7 @@
       <button class="peligro" id="btnEliminar" disabled hidden title="Quita esta ficha de la página (pide PIN)">🗑 Eliminar ficha</button>
     </div>
     <div class="extras off" id="extras">
-      <div class="extras-head">Agregar solo para esta descarga</div>
+      <div class="extras-head">Foto, mapa y video</div>
       <div class="drops">
         <label class="drop" data-tipo="foto"><input type="file" accept="image/*">
           <span class="mini"></span><span class="txt"><span class="dt">Foto</span><span class="dd">Arrastra o haz clic</span></span>

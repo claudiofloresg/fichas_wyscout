@@ -304,7 +304,19 @@ def limpiar_hoja(df):
     if "Player" in df.columns:
         df = df[df["Player"].notna() & (df["Player"].astype(str).str.strip() != "")]
         df["Player"] = df["Player"].astype(str).str.strip()
-    return df.reset_index(drop=True)
+    return completar_equipo(df).reset_index(drop=True)
+
+
+def completar_equipo(df, col="Team", respaldo="Team within selected timeframe"):
+    """Wyscout deja "Team" vacío cuando no sabe el equipo actual del jugador (p. ej. R. Schlegel):
+    se usa el equipo de la temporada ("Team within selected timeframe"). Sin esto el jugador no se
+    encuentra en su propia muestra y su radar individual sale en ceros con "nan" en el título."""
+    if col in df.columns and respaldo in df.columns:
+        vacio = df[col].isna() | (df[col].astype(str).str.strip().isin(["", "nan", "None"]))
+        if vacio.any():
+            df = df.copy()
+            df.loc[vacio, col] = df.loc[vacio, respaldo]
+    return df
 
 
 def preparar_posiciones(df):

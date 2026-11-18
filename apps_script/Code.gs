@@ -1,26 +1,53 @@
 /**
- * Code.gs — Apps Script de la hoja "lista_fichas" (Extensiones → Apps Script, pegar todo esto).
+ * Code.gs — Apps Script de la hoja "lista_fichas" de VARONIL (Extensiones → Apps Script, pegar todo esto).
+ * Va junto con eliminar.gs (otro archivo del mismo proyecto).
  *
- * Hace dos cosas:
- *  1. Recibe lo que manda la página (botón "＋ Nueva ficha"): agregar / quitar / ver la lista,
- *     publicar (dispara el workflow de GitHub) y ver el estado de la publicación. Todo pide PIN.
- *  2. Menú "Fichas" dentro de la hoja: Publicar fichas, Ver estado y Actualizar listas desplegables.
+ * Un solo Apps Script para las dos secciones de la página:
+ *   Varonil  → esta hoja (a la que está ligado el script)
+ *   Femenil  → la hoja lista_fichas de Femenil (FEMENIL_LISTA_ID)
+ * La página manda rama: 'varonil' | 'femenil' en cada solicitud.
+ *
+ * Hace:
+ *  1. "＋ Nueva ficha": agregar / quitar / ver la lista, publicar, actualizar datos y ver el estado. Pide PIN.
+ *  2. Foto, mapa y video permanentes (guardarImagen / guardarVideo): SIN PIN, en segundo plano.
+ *     La imagen se guarda en data_fichas/fotos o data_fichas/mapas de la sección (la carpeta donde está su
+ *     lista_fichas), con el nombre Wyscout del jugador, y reemplaza la anterior (va a la papelera de Drive).
+ *     El video se guarda en la pestaña "Nombres y video" de la lista de la sección. Después se publica solo.
+ *  3. Menú "Fichas" dentro de esta hoja: Publicar fichas, Actualizar datos y Ver estado.
  *
  * Propiedades del script (⚙ Configuración del proyecto → Propiedades del script):
  *   PIN           el PIN que se escribe en la página
  *   GITHUB_TOKEN  token fine-grained de GitHub (solo este repo, permiso Actions: Read and write)
+ *
+ * La primera vez después de pegar esto: elige la función "autorizar" arriba y presiona ▶ Ejecutar,
+ * y acepta los permisos (Drive y la hoja de Femenil). Luego: Implementar → Administrar implementaciones →
+ * ✏️ → Versión: Nueva versión → Implementar.
  */
 const REPO = 'claudiofloresg/fichas_wyscout';
 const WORKFLOW = 'actualizar.yml';
-const RAMA = 'main';
+const RAMA = 'main';                       // rama de git (no confundir con la sección Varonil/Femenil)
 const PAGINA = 'https://claudiofloresg.github.io/fichas_wyscout/';
-const ENCABEZADOS = ['ID', 'Liga', 'Posición', 'Nombre completo', 'Comparar con 1', 'Comparar con 2', 'Fecha'];
+const FEMENIL_LISTA_ID = '1PqO-IILu8th4w9lDFOJd-2fB_g7YxGbK3TOZKKB1xzE';
+// H e I van al final para no mover las columnas que ya existen
+const ENCABEZADOS = ['ID', 'Liga', 'Posición', 'Nombre completo', 'Comparar con 1', 'Comparar con 2', 'Fecha',
+  'Liga comparar 1', 'Liga comparar 2'];
+const HOJA_NOMBRES = 'Nombres y video';
+const ENC_NOMBRES = ['NOMBRE EXCEL', 'NOMBRE COMPLETO', 'VIDEO'];
 const MAX_FALLOS = 8;            // PIN incorrecto: después de 8 intentos se bloquea 15 minutos
+const MAX_IMAGEN = 8000000;      // base64 (~6 MB de imagen)
 
 // ============================================================ página → hoja
 function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'Solicitud inválida' }); }
+
+  // Foto, mapa y video: sin PIN (en segundo plano desde la página)
+  try {
+    if (req.accion === 'guardarImagen') return json_(guardarImagen_(req));
+    if (req.accion === 'guardarVideo') return json_(guardarVideo_(req));
+  } catch (err) {
+    return json_({ ok: false, error: String(err.message || err) });
+  }
 
   const props = PropertiesService.getScriptProperties();
   const cache = CacheService.getScriptCache();
@@ -34,14 +61,18 @@ function doPost(e) {
   }
 
   try {
+    const sec = seccion_(req.rama);
     switch (req.accion) {
+      case 'eliminar': return json_(eliminarFicha_(req));
       case 'verificar': return json_({ ok: true });
-      case 'lista': return json_({ ok: true, filas: leerFilas_(), pendiente: pendiente_() });
+      case 'lista': return json_({ ok: true, filas: leerFilas_(sec), pendiente: pendiente_(sec) });
       case 'agregar': return json_(agregar_(req));
       case 'quitar': return json_(quitar_(req));
       case 'publicar':
-        if (!leerFilas_().length) throw new Error('La lista está vacía: no hay nada que publicar.');
+        if (!leerFilas_(sec).length) throw new Error('La lista está vacía: no hay nada que publicar.');
         publicar_(); return json_({ ok: true });
+      // "Actualizar datos": vuelve a bajar la base de datos y todo lo de Drive aunque la lista no cambie
+      case 'actualizar': publicar_(); return json_({ ok: true });
       case 'estado': return json_({ ok: true, run: estado_() });
       default: return json_({ ok: false, error: 'Acción desconocida' });
     }
@@ -50,14 +81,20 @@ function doPost(e) {
   }
 }
 
-function doGet() {
-  return json_({ ok: true, mensaje: 'Apps Script de lista_fichas funcionando.' });
+// ============================================================ secciones (Varonil / Femenil)
+function seccion_(v) { return v === 'femenil' ? 'femenil' : 'varonil'; }
+
+/** Libro de la sección: Varonil = esta hoja; Femenil = la de FEMENIL_LISTA_ID. */
+function libro_(v) {
+  return seccion_(v) === 'femenil' ? SpreadsheetApp.openById(FEMENIL_LISTA_ID) : SpreadsheetApp.getActiveSpreadsheet();
 }
 
-// ============================================================ hoja
-function hoja_() {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+/** Primera pestaña del libro de la sección = la lista de fichas. */
+function hoja_(v) {
+  const sh = libro_(v).getSheets()[0];
   if (sh.getLastRow() === 0) sh.appendRow(ENCABEZADOS);
+  const enc = sh.getRange(1, 1, 1, ENCABEZADOS.length).getValues()[0];
+  if (enc.some((x) => !x)) sh.getRange(1, 1, 1, ENCABEZADOS.length).setValues([ENCABEZADOS]).setFontWeight('bold');
   return sh;
 }
 
@@ -71,53 +108,141 @@ function clave_(id, liga, pos) {
   return [n(id), n(liga), n(pos)].join('|');
 }
 
-function leerFilas_() {
-  const sh = hoja_();
+function leerFilas_(v) {
+  const sh = hoja_(v);
   if (sh.getLastRow() < 2) return [];
   return sh.getRange(2, 1, sh.getLastRow() - 1, ENCABEZADOS.length).getDisplayValues()
     .filter((r) => r[0])
-    .map((r) => ({ id: r[0], liga: r[1], posicion: r[2], nombre: r[3], comp1: r[4], comp2: r[5], fecha: r[6] }));
+    .map((r) => ({ id: r[0], liga: r[1], posicion: r[2], nombre: r[3], comp1: r[4], comp2: r[5], fecha: r[6],
+      ligac1: r[7], ligac2: r[8] }));
 }
 
 function agregar_(d) {
+  const sec = seccion_(d.rama);
   const f = {
     id: limpio_(d.id), liga: limpio_(d.liga), posicion: limpio_(d.posicion), nombre: limpio_(d.nombre),
-    comp1: limpio_(d.comp1), comp2: limpio_(d.comp2),
+    comp1: limpio_(d.comp1), comp2: limpio_(d.comp2), ligac1: limpio_(d.ligac1), ligac2: limpio_(d.comp2 ? d.ligac2 : ''),
   };
   if (!f.id || !f.liga || !f.posicion || !f.nombre || !f.comp1) throw new Error('Faltan campos obligatorios.');
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    const sh = hoja_();
+    const sh = hoja_(sec);
     const fila = [f.id, f.liga, f.posicion, f.nombre, f.comp1, f.comp2,
-      Utilities.formatDate(new Date(), 'America/Mexico_City', 'dd/MM/yyyy HH:mm')];
+      Utilities.formatDate(new Date(), 'America/Mexico_City', 'dd/MM/yyyy HH:mm'), f.ligac1, f.ligac2];
     const k = clave_(f.id, f.liga, f.posicion);
     const datos = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues() : [];
-    const i = datos.findIndex((r) => clave_(r[0], r[1], r[2]) === k);
+    const claves = datos.map((r) => clave_(r[0], r[1], r[2]));
+    // Editar: se reemplaza el renglón ORIGINAL aunque se corrija el ID, la liga o la posición
+    const o = d.original || null;
+    let i = o ? claves.indexOf(clave_(o.id, o.liga, o.posicion)) : -1;
+    if (i < 0) i = claves.indexOf(k);
     const rango = i >= 0 ? sh.getRange(i + 2, 1, 1, fila.length) : sh.getRange(sh.getLastRow() + 1, 1, 1, fila.length);
+    rango.clearDataValidations();
     rango.setNumberFormat('@').setValues([fila]);
-    marcarPendiente_(true);
-    return { ok: true, nuevo: i < 0, filas: leerFilas_() };
+    // si ya había otro renglón con el ID corregido, se borra (no quedan repetidos)
+    for (let j = claves.length - 1; j >= 0; j--) {
+      if (j !== i && claves[j] === k) sh.deleteRow(j + 2);
+    }
+    marcarPendiente_(true, sec);
+    return { ok: true, nuevo: i < 0, filas: leerFilas_(sec) };
   } finally {
     lock.releaseLock();
   }
 }
 
 function quitar_(d) {
+  const sec = seccion_(d.rama);
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    const sh = hoja_();
+    const sh = hoja_(sec);
     const k = clave_(d.id, d.liga, d.posicion);
     const datos = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues() : [];
     for (let i = datos.length - 1; i >= 0; i--) {
       if (clave_(datos[i][0], datos[i][1], datos[i][2]) === k) sh.deleteRow(i + 2);
     }
-    marcarPendiente_(true);
-    return { ok: true, filas: leerFilas_() };
+    marcarPendiente_(true, sec);
+    return { ok: true, filas: leerFilas_(sec) };
   } finally {
     lock.releaseLock();
   }
+}
+
+// ============================================================ foto, mapa y video permanentes (sin PIN)
+/** Carpeta data_fichas/<sub> de la sección (la carpeta donde está su lista_fichas). Se crea si falta. */
+function carpetaSeccion_(v, sub) {
+  const padres = DriveApp.getFileById(libro_(v).getId()).getParents();
+  if (!padres.hasNext()) throw new Error('No encuentro la carpeta data_fichas de la sección.');
+  const dataFichas = padres.next();
+  const it = dataFichas.getFoldersByName(sub);
+  return it.hasNext() ? it.next() : dataFichas.createFolder(sub);
+}
+
+function nombreArchivo_(s) {
+  return limpio_(s, 80).replace(/[\\/:*?"<>|#%]/g, '').trim();
+}
+
+function guardarImagen_(d) {
+  const sub = d.tipo === 'foto' ? 'fotos' : d.tipo === 'mapa' ? 'mapas' : null;
+  if (!sub) throw new Error('Tipo inválido.');
+  const jugador = nombreArchivo_(d.jugador);
+  if (!jugador) throw new Error('Falta el jugador.');
+  const b64 = String(d.imagen || '');
+  if (!b64 || b64.length > MAX_IMAGEN) throw new Error('Imagen vacía o demasiado grande.');
+  const bytes = Utilities.base64Decode(b64);
+  if (bytes.length < 4 || (bytes[0] & 0xff) !== 0xff || (bytes[1] & 0xff) !== 0xd8) throw new Error('La imagen debe ser JPEG.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const carpeta = carpetaSeccion_(d.rama, sub);
+    // la anterior de ese jugador (cualquier extensión) va a la papelera de Drive
+    const k = clave_(jugador, '', '');
+    const it = carpeta.getFiles();
+    while (it.hasNext()) {
+      const f = it.next();
+      if (clave_(f.getName().replace(/\.[^.]+$/, ''), '', '') === k) f.setTrashed(true);
+    }
+    carpeta.createFile(Utilities.newBlob(bytes, 'image/jpeg', jugador + '.jpg'));
+  } finally {
+    lock.releaseLock();
+  }
+  publicarSilencioso_();
+  return { ok: true };
+}
+
+function guardarVideo_(d) {
+  const jugador = limpio_(d.jugador);
+  const video = limpio_(d.video, 500);
+  if (!jugador) throw new Error('Falta el jugador.');
+  if (!/^https?:\/\/\S+\.\S+$/i.test(video)) throw new Error('El link del video no es válido.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const ss = libro_(d.rama);
+    let sh = ss.getSheetByName(HOJA_NOMBRES);
+    if (!sh) {                                      // siempre al final: la lista sigue siendo la primera pestaña
+      sh = ss.insertSheet(HOJA_NOMBRES, ss.getNumSheets());
+      sh.getRange(1, 1, 1, ENC_NOMBRES.length).setValues([ENC_NOMBRES]).setFontWeight('bold');
+      sh.setFrozenRows(1);
+    }
+    const n = sh.getLastRow() - 1;
+    const datos = n > 0 ? sh.getRange(2, 1, n, 1).getValues() : [];
+    const k = clave_(jugador, '', '');
+    let fila = -1;
+    for (let i = 0; i < datos.length; i++) {
+      if (clave_(datos[i][0], '', '') === k) { fila = i + 2; break; }
+    }
+    if (fila > 0) {
+      sh.getRange(fila, 3).clearDataValidations().setNumberFormat('@').setValue(video);
+    } else {
+      sh.getRange(sh.getLastRow() + 1, 1, 1, 3).clearDataValidations().setNumberFormat('@').setValues([[jugador, '', video]]);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  publicarSilencioso_();
+  return { ok: true };
 }
 
 // ============================================================ GitHub
@@ -138,15 +263,26 @@ function github_(metodo, ruta, cuerpo) {
   return c === 204 ? null : JSON.parse(r.getContentText());
 }
 
+/** Publica todo (las tres secciones se generan en la misma corrida). */
 function publicar_() {
   github_('post', '/actions/workflows/' + WORKFLOW + '/dispatches', { ref: RAMA });
-  marcarPendiente_(false);
+  marcarPendiente_(false, 'varonil');
+  marcarPendiente_(false, 'femenil');
+}
+
+/** Igual, pero si GitHub falla no se pierde lo guardado (sale en la siguiente publicación). */
+function publicarSilencioso_() {
+  try { publicar_(); } catch (err) { console.error('No se pudo publicar: ' + err); }
 }
 
 // "Hay cambios sin publicar": se prende al agregar/quitar (o editar la hoja a mano) y se apaga al publicar
-function marcarPendiente_(v) { PropertiesService.getScriptProperties().setProperty('PENDIENTE', v ? '1' : '0'); }
-function pendiente_() { return PropertiesService.getScriptProperties().getProperty('PENDIENTE') === '1'; }
-function onEdit() { marcarPendiente_(true); }
+function marcarPendiente_(v, sec) {
+  PropertiesService.getScriptProperties().setProperty(seccion_(sec) === 'femenil' ? 'PENDIENTE_femenil' : 'PENDIENTE', v ? '1' : '0');
+}
+function pendiente_(sec) {
+  return PropertiesService.getScriptProperties().getProperty(seccion_(sec) === 'femenil' ? 'PENDIENTE_femenil' : 'PENDIENTE') === '1';
+}
+function onEdit() { marcarPendiente_(true, 'varonil'); }   // solo avisa de la hoja de Varonil (la de este script)
 
 function estado_() {
   const r = github_('get', '/actions/workflows/' + WORKFLOW + '/runs?per_page=1');
@@ -159,18 +295,24 @@ function estado_() {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Fichas')
     .addItem('Publicar fichas', 'menuPublicar')
+    .addItem('Actualizar datos (base de datos y Drive)', 'menuActualizar')
     .addItem('Ver estado de la publicación', 'menuEstado')
-    .addSeparator()
-    .addItem('Actualizar listas desplegables', 'menuDesplegables')
     .addToUi();
 }
 
 function menuPublicar() {
   const ui = SpreadsheetApp.getUi();
-  if (!leerFilas_().length) { ui.alert('La lista está vacía: no hay nada que publicar.'); return; }
-  if (ui.alert('Publicar fichas', 'Se publican todas las fichas de esta hoja. Tarda de 2 a 5 minutos.', ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
+  if (ui.alert('Publicar fichas', 'Se publican Varonil, Femenil y Pumas. Tarda de 2 a 5 minutos.', ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
   publicar_();
   ui.alert('Listo', 'Se mandó a publicar. En unos minutos se ve en ' + PAGINA, ui.ButtonSet.OK);
+}
+
+function menuActualizar() {
+  const ui = SpreadsheetApp.getUi();
+  if (ui.alert('Actualizar datos', 'Se vuelve a bajar la base de datos y todo lo de Drive, y se rehacen las fichas. Tarda de 3 a 6 minutos.',
+    ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
+  publicar_();
+  ui.alert('Listo', 'Se mandó a actualizar. En unos minutos se ve en ' + PAGINA, ui.ButtonSet.OK);
 }
 
 function menuEstado() {
@@ -181,23 +323,12 @@ function menuEstado() {
   SpreadsheetApp.getUi().alert('Estado', t, SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
-/** Pone listas desplegables (Liga, Posición, Comparar con) leyendo las opciones de la página. */
-function menuDesplegables() {
-  const txt = UrlFetchApp.fetch(PAGINA + 'data/opciones.js?ts=' + Date.now()).getContentText();
-  const op = JSON.parse(txt.replace(/^window\.OPCIONES\s*=\s*/, '').replace(/;\s*$/, ''));
-  const sh = hoja_();
-  const n = Math.max(sh.getMaxRows() - 1, 1);
-  const lista = (vals) => SpreadsheetApp.newDataValidation().requireValueInList(vals, true).setAllowInvalid(false).build();
-  sh.getRange(2, 2, n).setDataValidation(lista(op.ligas));
-  sh.getRange(2, 3, n).setDataValidation(lista(op.posiciones));
-  const pumas = op.pumas.map((p) => p[0]);
-  if (pumas.length) {
-    sh.getRange(2, 5, n).setDataValidation(lista(pumas));
-    sh.getRange(2, 6, n).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(pumas, true).setAllowInvalid(true).build());
-  }
-  sh.setFrozenRows(1);
-  sh.getRange(1, 1, 1, ENCABEZADOS.length).setValues([ENCABEZADOS]).setFontWeight('bold');
-  SpreadsheetApp.getUi().alert('Listo', 'Listas actualizadas (' + op.ligas.length + ' ligas, ' + pumas.length + ' jugadores de Pumas).', SpreadsheetApp.getUi().ButtonSet.OK);
+/** Ejecútala UNA vez desde el editor (▶ Ejecutar) para dar los permisos de Drive y de la hoja de Femenil. */
+function autorizar() {
+  const fem = SpreadsheetApp.openById(FEMENIL_LISTA_ID).getName();
+  const v = carpetaSeccion_('varonil', 'fotos').getName();
+  const f = carpetaSeccion_('femenil', 'fotos').getName();
+  console.log('Listo. Femenil: ' + fem + ' · carpetas: ' + v + ' / ' + f);
 }
 
 function json_(o) {

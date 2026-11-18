@@ -30,7 +30,7 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Bajar data_fichas de Google Drive
+      - name: Bajar data_fichas de Google Drive (Varonil y Femenil)
         env:
           GDRIVE_KEY: ${{ secrets.GDRIVE_KEY }}
           BASE_FILE_ID: ${{ vars.BASE_FILE_ID }}
@@ -39,8 +39,13 @@ jobs:
           python descargar_drive.py
           rm -f gdrive_key.json
 
-      - name: Generar la página
+      - name: Generar la página (Varonil)
         run: python build.py
+
+      # Sección Femenil en <página>/femenil/. Si falla, se publica lo demás igual.
+      - name: Generar Femenil
+        continue-on-error: true
+        run: python build.py --femenil
 
       # Fichas de Pumas en <página>/pumas/. Si falla, se publica lo demás igual.
       - name: Generar fichas de Pumas
@@ -52,7 +57,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: reporte_build
-          path: reporte_build.txt
+          path: |
+            reporte_build.txt
+            reporte_femenil.txt
+            reporte_pumas.txt
           if-no-files-found: ignore
 
       - name: Publicar (solo si cambió algo)
@@ -63,8 +71,9 @@ jobs:
           # la fecha de "generado" y el ?v= cambian siempre: no cuentan como cambio
           quitar='s/"generado":"[^"]*"//'
           igual() { [ "$(git show HEAD:"$1" 2>/dev/null | sed "$quitar")" = "$(sed "$quitar" "$1" 2>/dev/null)" ]; }
-          if git diff --cached --quiet -- . ':(exclude)docs/index.html' ':(exclude)docs/data/fichas.js' ':(exclude)docs/pumas/data/fichas.js' \
-             && igual docs/data/fichas.js && igual docs/pumas/data/fichas.js; then
+          if git diff --cached --quiet -- . ':(exclude)docs/index.html' ':(exclude)docs/data/fichas.js' \
+               ':(exclude)docs/femenil/data/fichas.js' ':(exclude)docs/pumas/data/fichas.js' \
+             && igual docs/data/fichas.js && igual docs/femenil/data/fichas.js && igual docs/pumas/data/fichas.js; then
             echo "Sin cambios en los datos; no se publica."
             exit 0
           fi

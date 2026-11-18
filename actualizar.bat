@@ -33,13 +33,24 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo == 2b/3 Generando fichas de Pumas para la pagina (/pumas/) ==
+echo == 2b/3 Generando Femenil (/femenil/) ==
+python build.py --femenil
+if errorlevel 1 echo [AVISO] No se genero Femenil; se publica lo demas.
+echo == 2c/3 Generando fichas de Pumas para la pagina (/pumas/) ==
 python build.py --pumas --web
 if errorlevel 1 echo [AVISO] No se generaron las fichas de Pumas; se publica lo demas.
 echo.
 echo == 3/3 Publicando en GitHub Pages ==
 git add -A
-git diff --cached --quiet && (echo No hay cambios que publicar.) || (git commit -m "Actualizacion %date% %time%" && git push)
+git diff --cached --quiet && (echo No hay cambios nuevos en los datos.) || (git commit -m "Actualizacion %date% %time%")
+rem tambien sube los "Cambios locales" del paso 0 (aunque los datos no hayan cambiado)
+git push
+if errorlevel 1 (
+  echo.
+  echo No se pudo subir a GitHub. Revisa el mensaje de arriba.
+  pause
+  exit /b 1
+)
 echo.
 echo Listo. La pagina se actualiza en 1-2 minutos.
 pause

@@ -1,9 +1,10 @@
 /* app.js — posición, lista de jugadores, vista previa y descargas */
 (() => {
   const D = window.FICHAS;
+  const RAMA = window.RAMA === 'femenil' ? 'femenil' : 'varonil';
   const $ = (id) => document.getElementById(id);
   const selPos = $('selPos'), txt = $('txtBuscar');
-  const lista = $('lista'), count = $('count'), status = $('status');
+  const lista = $('lista'), status = $('status');
   const btnPdf = $('btnPdf'), btnEquipo = $('btnEquipo'), frame = $('preview'), empty = $('empty');
 
   if (!D || !D.posiciones || !D.posiciones.length) {
@@ -109,7 +110,7 @@
     bajarBlob(await zip.generateAsync({ type: 'blob' }), nombreZip);
   }
 
-  D.posiciones.forEach((p) => selPos.appendChild(opt(p.id, `${p.label} (${p.jugadores.length})`)));
+  D.posiciones.forEach((p) => selPos.appendChild(opt(p.id, p.label)));
 
   function cargarPos() {
     pos = D.posiciones.find((p) => p.id === selPos.value) || D.posiciones[0];
@@ -142,7 +143,6 @@
       frag.appendChild(li);
     });
     lista.appendChild(frag);
-    count.textContent = `${js.length} jugador${js.length === 1 ? '' : 'es'}`;
     if (!js.length) { const v = document.createElement('li'); v.className = 'grupo'; v.textContent = 'Sin resultados'; lista.appendChild(v); }
     btnEquipo.disabled = !js.length;
     btnEquipo.title = `Los ${js.length} jugadores con una sola portada`;
@@ -152,7 +152,6 @@
     actual = j;
     document.querySelectorAll('#lista li').forEach((li) => li.classList.toggle('sel', li.dataset.id === j.id));
     $('titulo').textContent = j.nombre;
-    $('subtitulo').textContent = [j.equipo, j.posicion, `${j.minutos.toLocaleString('es-MX')} min`].filter(Boolean).join(' · ');
     btnPdf.disabled = false; $('btnVer').disabled = false; $('btnEliminar').disabled = false;
     const u = new URL(location.href);
     u.searchParams.set('p', pos.id); u.searchParams.set('j', j.id);
@@ -177,7 +176,22 @@
     }
   }
 
-  // ---------------------------------------------------------------- foto / mapa / video temporales
+  // ---------------------------------------------------------------- foto / mapa / video
+  // Se ven al momento en esta pestaña y, en segundo plano (sin PIN ni avisos), se guardan para siempre en el Drive
+  // de la sección (Apps Script) y se publican solos. Para los demás aparecen en 2-5 minutos.
+  function guardarPermanente(accion, datos) {
+    const f = window.Fichas && window.Fichas.guardarPublico;
+    if (!f) return Promise.resolve(false);
+    return f(accion, datos).then(() => true).catch((e) => { console.warn('No se guardó en Drive:', e); return false; });
+  }
+  function aBase64(url) {
+    return fetch(url).then((r) => r.blob()).then((b) => new Promise((ok, mal) => {
+      const fr = new FileReader();
+      fr.onload = () => ok(String(fr.result).split(',')[1]);
+      fr.onerror = mal;
+      fr.readAsDataURL(b);
+    }));
+  }
   const extras = $('extras'), txtVideo = $('txtVideo');
   const drops = [...document.querySelectorAll('.drop[data-tipo="foto"], .drop[data-tipo="mapa"]')];
 
@@ -209,11 +223,11 @@
       const tienePerm = actual && actual[tipo];
       d.classList.toggle('lleno', !!url);
       d.querySelector('.mini').style.backgroundImage = url ? `url("${url}")` : (tienePerm ? `url("${actual[tipo]}")` : '');
-      d.querySelector('.dd').textContent = url ? `${t[tipo + 'Nombre']} (temporal)`
-        : (tienePerm ? 'Ya tiene (Drive). Arrastra para reemplazar' : 'Arrastra o haz clic');
+      d.querySelector('.dd').textContent = url ? `${t[tipo + 'Nombre']}${t[tipo + 'Fallo'] ? ' (no se guardó)' : ''}`
+        : (tienePerm ? 'Ya tiene. Arrastra para reemplazar' : 'Arrastra o haz clic');
     });
     txtVideo.value = t.video || '';
-    txtVideo.placeholder = actual && actual.video ? 'Ya tiene video (Drive). Pega otro para reemplazar' : 'Pega el link del video';
+    txtVideo.placeholder = actual && actual.video ? 'Ya tiene video. Pega otro para reemplazar' : 'Pega el link del video';
   }
 
   async function ponerArchivo(tipo, file) {
@@ -224,8 +238,12 @@
       const url = await aJpeg(file);
       const t = (temp[j.id] = temp[j.id] || {});
       if (t[tipo]) URL.revokeObjectURL(t[tipo]);
-      t[tipo] = url; t[tipo + 'Nombre'] = file.name;
+      t[tipo] = url; t[tipo + 'Nombre'] = file.name; delete t[tipo + 'Fallo'];
       if (actual === j) { pintarExtras(); vistaPrevia(j); }
+      aBase64(url)
+        .then((b64) => guardarPermanente('guardarImagen', { tipo, jugador: j.nombreExcel, equipo: j.equipo || '', imagen: b64 }))
+        .catch(() => false)
+        .then((ok) => { if (!ok && window.Fichas && t[tipo] === url) { t[tipo + 'Fallo'] = true; if (actual === j) pintarExtras(); } });
     } catch (e) { status.textContent = 'Error: ' + e.message; }
   }
 
@@ -246,7 +264,7 @@
   // soltar una imagen fuera de las cajas no abre la imagen en la pestaña
   ['dragover', 'drop'].forEach((ev) => window.addEventListener(ev, (e) => e.preventDefault()));
 
-  let tVideo = null;
+  let tVideo = null, tGuardarVideo = null;
   txtVideo.addEventListener('input', () => {
     if (!actual) return;
     const j = actual, v = txtVideo.value.trim();
@@ -254,6 +272,14 @@
     if (v) t.video = /^https?:\/\//i.test(v) ? v : 'https://' + v; else delete t.video;
     clearTimeout(tVideo);
     tVideo = setTimeout(() => { if (actual === j) vistaPrevia(j); }, 600);
+    // se guarda cuando dejan de escribir (2 s) y parece un link; borrar el texto no borra el video guardado
+    clearTimeout(tGuardarVideo);
+    const link = t.video;
+    if (link && /^https?:\/\/[^\s/]+\.[^\s]+/i.test(link)) {
+      tGuardarVideo = setTimeout(() => {
+        if (t.video === link) guardarPermanente('guardarVideo', { jugador: j.nombreExcel, equipo: j.equipo || '', video: link });
+      }, 2000);
+    }
   });
 
   // vista previa del PDF completo (con portada si está marcada) en otra pestaña
@@ -321,14 +347,14 @@
     D.posiciones.forEach((p) => { p.jugadores = p.jugadores.filter((x) => !js.has(x)); });
     selPos.querySelectorAll('option').forEach((o) => {
       const p = D.posiciones.find((x) => x.id === o.value);
-      if (p) o.textContent = `${p.label} (${p.jugadores.length})`;
+      if (p) o.textContent = p.label;
     });
     if (actual && js.has(actual)) {
       actual = null;
       if (urlPrev) { URL.revokeObjectURL(urlPrev); urlPrev = null; }
       frame.removeAttribute('src'); empty.style.display = '';
       empty.textContent = aviso || 'Esta ficha se eliminó.';
-      $('titulo').textContent = 'Selecciona un jugador'; $('subtitulo').textContent = '';
+      $('titulo').textContent = 'Selecciona un jugador';
       btnPdf.disabled = true; $('btnVer').disabled = true; btnEliminar.disabled = true;
       const u = new URL(location.href); u.searchParams.delete('j'); history.replaceState(null, '', u);
       pintarExtras();

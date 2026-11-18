@@ -1,0 +1,4 @@
+# Los scripts de Mac siempre con fin de línea LF (si no, no corren); los de Windows con CRLF.
+*.command text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf

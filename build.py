@@ -59,19 +59,37 @@ try:
     print("Usando datos bajados de Drive (config_auto.py)")
 except ImportError:
     pass
+
+# python build.py --femenil  -> la sección Femenil de la página (docs/femenil/), con la data_fichas y la base
+# de Femenil (RAMA_FEMENIL en config_auto.py, que escribe descargar_drive.py). Sin --femenil -> Varonil (docs/).
+MODO_FEMENIL = "--femenil" in sys.argv
+if MODO_FEMENIL:
+    _rf = getattr(C, "RAMA_FEMENIL", None)
+    if not _rf:
+        print("[ERROR] No hay datos de Femenil (RAMA_FEMENIL en config_auto.py). Corre descargar_drive.py con la llave\n"
+              "  y revisa que la carpeta 'Scouting 26-27' esté compartida con la cuenta de servicio.")
+        sys.exit(1)
+    for _k, _v in _rf.items():
+        setattr(C, _k, _v)
+    C.LIGA_REFERENCIA = getattr(C, "FEMENIL_LIGA_REFERENCIA", "Liga MX Femenil")
+    C.FACTOR_LIGA = getattr(C, "FEMENIL_FACTOR_LIGA", {})          # en Femenil no hay ajuste por nivel de liga
+    print("Rama: Femenil")
 from paises import PAISES
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 # python build.py --pumas  -> fichas de jugadores de Pumas SOLO en esta compu (carpeta pumas_local/, no se sube
 # a GitHub ni toca la página). Sin --pumas -> la página de siempre (docs/), ya sin jugadores de Pumas.
 # python build.py --pumas --web  -> las mismas fichas de Pumas para la página en internet (docs/pumas/ = <página>/pumas/).
-MODO_PUMAS = "--pumas" in sys.argv
+MODO_PUMAS = "--pumas" in sys.argv and not MODO_FEMENIL
 MODO_WEB = MODO_PUMAS and "--web" in sys.argv
-DOCS = os.path.join(BASE, "docs", "pumas") if MODO_WEB else os.path.join(BASE, "pumas_local" if MODO_PUMAS else "docs")
+DOCS = (os.path.join(BASE, "docs", "femenil") if MODO_FEMENIL
+        else os.path.join(BASE, "docs", "pumas") if MODO_WEB
+        else os.path.join(BASE, "pumas_local" if MODO_PUMAS else "docs"))
 OUT_DATA = os.path.join(DOCS, "data", "fichas.js")
 OUT_OPCIONES = os.path.join(DOCS, "data", "opciones.js")
 OUT_IMG = {k: os.path.join(DOCS, "img", k) for k in ("fotos", "mapas", "radares")}
-REPORTE = os.path.join(BASE, "reporte_pumas.txt" if MODO_PUMAS else "reporte_build.txt")
+REPORTE = os.path.join(BASE, "reporte_pumas.txt" if MODO_PUMAS else "reporte_femenil.txt" if MODO_FEMENIL
+                       else "reporte_build.txt")
 
 cfg = lambda nombre, default=None: getattr(C, nombre, default)  # noqa: E731
 
@@ -296,12 +314,23 @@ def recortar_radar(src, dst):
 
 # ============================================================================= nombres completos
 def cargar_nombres():
-    """CARPETA_NOMBRES (NOMBRE EXCEL | NOMBRE COMPLETO | VIDEO opcional).
+    """Nombres completos y videos (NOMBRE EXCEL | NOMBRE COMPLETO | VIDEO opcional), de:
+      1. CARPETA_NOMBRES (Excel/CSV, la carpeta nombres_y_video de antes), y
+      2. la pestaña "Nombres y video" de lista_fichas (ahí guarda la página los videos). Esta gana.
     Devuelve ({slug(nombre Excel): nombre completo}, {slug(nombre Excel): link del video})."""
     out, videos = {}, {}
+    fuentes = []
     for path in leer_carpeta(cfg("CARPETA_NOMBRES", "datos/nombres"), (".xlsx", ".xlsm", ".xls", ".csv")):
-        hojas = {"csv": pd.read_csv(path, dtype=object)} if path.lower().endswith(".csv") \
-            else pd.read_excel(path, sheet_name=None, dtype=object)
+        fuentes.append((path, {"csv": pd.read_csv(path, dtype=object)} if path.lower().endswith(".csv")
+                        else pd.read_excel(path, sheet_name=None, dtype=object)))
+    lista = cfg("ARCHIVO_LISTA")
+    if lista and os.path.isfile(ruta(lista)):
+        try:
+            hojas = pd.read_excel(ruta(lista), sheet_name=None, dtype=object)
+            fuentes.append((lista, {h: df for h, df in hojas.items() if "nombre" in slug(h) and "video" in slug(h)}))
+        except Exception as e:                          # noqa: BLE001
+            print(f"  [aviso] no pude leer la pestaña 'Nombres y video' de lista_fichas: {e}")
+    for path, hojas in fuentes:
         for hoja, df in hojas.items():
             if df.shape[1] < 2:
                 continue
@@ -476,7 +505,8 @@ def leer_excel(path):
         print(f"  [aviso] {os.path.basename(path)}: no trae la columna '{C.COL_JUGADOR}'; se omite")
         return None
     df = df[df[C.COL_JUGADOR].notna() & (df[C.COL_JUGADOR].astype(str).str.strip() != "")].reset_index(drop=True)
-    return df
+    from radares import completar_equipo                  # Team vacío -> equipo de la temporada
+    return completar_equipo(df, C.COL_EQUIPO)
 
 
 def stats_de(df, i, posicion, faltan):
@@ -827,7 +857,9 @@ def main():
         if not grupos:
             print(f"[ERROR] No hay archivos Excel en {ruta(C.CARPETA_EXCEL)}")
             sys.exit(1)
-    return armar(rep, modo, grupos, base, mod_radares)
+    armar(rep, modo, grupos, base, mod_radares)
+    if MODO_FEMENIL:
+        copiar_pagina_femenil()
 
 
 def main_pumas(rep, arch_base):
@@ -848,11 +880,26 @@ def main_pumas(rep, arch_base):
     copiar_pagina_pumas()
 
 
-# Menú para cambiar entre la página de scouting y la de Pumas (solo en internet)
-MENU_SITIO = ('<select class="sitio" id="selSitio" autocomplete="off" aria-label="Tipo de fichas" '
-              'onchange="location.href=this.value">'
-              '<option value="../">Fichas Scouting</option><option value="./" selected>Fichas Pumas</option></select>'
-              '<script>addEventListener("pageshow",function(){document.getElementById("selSitio").selectedIndex=1;});</script>')
+# Menú para cambiar de sección: Varonil (docs/), Femenil (docs/femenil/), Pumas (docs/pumas/)
+SECCIONES = (("Varonil", ""), ("Femenil", "femenil/"), ("Pumas", "pumas/"))
+
+
+def menu_sitio(actual):
+    """<select> del encabezado, visto desde la sección `actual` (Varonil, Femenil o Pumas)."""
+    pref = "" if actual == "Varonil" else "../"
+    ops, i_act = [], 0
+    for i, (nombre, carpeta) in enumerate(SECCIONES):
+        destino = "./" if nombre == actual else (pref + carpeta) or "./"
+        sel = " selected" if nombre == actual else ""
+        if nombre == actual:
+            i_act = i
+        ops.append(f'<option value="{destino}"{sel}>{nombre}</option>')
+    return ('<select class="sitio" id="selSitio" autocomplete="off" aria-label="Sección" '
+            'onchange="location.href=this.value">' + "".join(ops) + '</select>'
+            f'<script>addEventListener("pageshow",function(){{document.getElementById("selSitio").selectedIndex={i_act};}});</script>')
+
+
+MENU_SITIO = menu_sitio("Pumas")
 CSS_SITIO = ("  header select.sitio{width:auto;flex:none;font:inherit;font-size:13px;font-weight:700;padding:7px 10px;border-radius:6px;"
              "border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;cursor:pointer;}\n"
              "  header select.sitio option{color:#12181E;}\n")
@@ -860,7 +907,7 @@ CSS_SITIO = ("  header select.sitio{width:auto;flex:none;font:inherit;font-size:
 
 def copiar_pagina_pumas_web():
     """docs/pumas/: la página de Pumas TAL CUAL (herramientas/pumas) para internet. Cambia solo las rutas a las
-    librerías (usa las de docs/vendor, sin copiarlas) y agrega el menú Scouting / Pumas.
+    librerías (usa las de docs/vendor, sin copiarlas) y agrega el menú Varonil / Femenil / Pumas.
     En GitHub Actions no está herramientas/ (no se sube): se conserva la que ya está en docs/pumas/."""
     import shutil
     src = os.path.join(BASE, "herramientas", "pumas")
@@ -868,7 +915,13 @@ def copiar_pagina_pumas_web():
         if not os.path.isfile(os.path.join(DOCS, "index.html")):
             print("[AVISO] Falta la página de Pumas (docs/pumas/index.html). Corre actualizar.bat en tu compu una vez.")
         else:
-            print("  Página de Pumas: se conserva docs/pumas/index.html y pumas.js")
+            print("  Página de Pumas: se conserva docs/pumas/index.html y pumas.js (solo se actualiza su menú)")
+            ip = os.path.join(DOCS, "index.html")
+            t = open(ip, encoding="utf-8").read()
+            t2 = re.sub(r"<select class=\"sitio\".*?</script>", lambda m: MENU_SITIO, t, count=1, flags=re.S)
+            if t2 != t:
+                with open(ip, "w", encoding="utf-8", newline="\n") as g:
+                    g.write(t2)
     else:
         for f in os.listdir(src):
             t = open(os.path.join(src, f), encoding="utf-8").read()
@@ -880,6 +933,25 @@ def copiar_pagina_pumas_web():
             with open(os.path.join(DOCS, f), "w", encoding="utf-8", newline="\n") as g:
                 g.write(t)
     shutil.copy2(os.path.join(BASE, "docs", "informe.js"), os.path.join(DOCS, "informe.js"))
+    shutil.copytree(os.path.join(BASE, "docs", "assets"), os.path.join(DOCS, "assets"), dirs_exist_ok=True)
+
+
+def copiar_pagina_femenil():
+    """docs/femenil/: la MISMA página de docs/index.html, con sus datos (data/, img/) y el resto compartido
+    (../app.js, ../nueva.js, ../vendor…). Solo cambia el menú y window.RAMA = "femenil"."""
+    import shutil
+    t = open(os.path.join(BASE, "docs", "index.html"), encoding="utf-8").read()
+    t = re.sub(r"""(src|href)="(vendor|assets)/""", r'\1="../\2/', t)
+    t = re.sub(r"<select class=\"sitio\".*?</script>", lambda m: menu_sitio("Femenil"), t, count=1, flags=re.S)
+    t = t.replace("['data/fichas.js', 'informe.js', 'app.js', 'config_web.js', 'nueva.js']",
+                  "['data/fichas.js', '../informe.js', '../app.js', '../config_web.js', '../nueva.js']")
+    t = t.replace("<script src=\"../vendor/pdf-lib.min.js\"></script>",
+                  "<script>window.RAMA = 'femenil';</script>\n<script src=\"../vendor/pdf-lib.min.js\"></script>", 1)
+    if "window.RAMA = 'femenil'" not in t or "'../app.js'" not in t:
+        print("[AVISO] docs/index.html cambió de forma: revisa docs/femenil/index.html")
+    with open(os.path.join(DOCS, "index.html"), "w", encoding="utf-8", newline="\n") as g:
+        g.write(t)
+    # informe.js pide assets/fondo_carta.jpg junto a la página
     shutil.copytree(os.path.join(BASE, "docs", "assets"), os.path.join(DOCS, "assets"), dirs_exist_ok=True)
 
 

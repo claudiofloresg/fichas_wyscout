@@ -1,24 +1,33 @@
 # -*- coding: utf-8 -*-
 """
-descargar_drive.py — baja la carpeta data_fichas de Google Drive (para GitHub Actions)
-====================================================================================
+descargar_drive.py — baja de Google Drive las carpetas data_fichas de Varonil y Femenil (para GitHub Actions)
+==========================================================================================================
 Lo usa el workflow .github/workflows/actualizar.yml. No hace falta correrlo a mano.
 
+En Drive:   Scouting 26-27/Varonil/  Data Wyscout 26-27.xlsx  +  data_fichas/ (lista_fichas, fotos, mapas…)
+            Scouting 26-27/Femenil/  Data Wyscout 26-27.xlsx  +  data_fichas/ (lista_fichas, fotos, mapas)
+
   1. Se conecta a Drive con la cuenta de servicio (llave JSON en el secreto GDRIVE_KEY).
-  2. Descarga TODA la carpeta (con subcarpetas) a  datos_drive/
-     - Google Sheets se exportan como .xlsx automáticamente.
+  2. Por cada rama descarga TODA su carpeta data_fichas (con subcarpetas):
+       Varonil -> datos_drive/        Femenil -> datos_drive_femenil/
+     - Google Sheets se exportan como .xlsx automáticamente (con todas sus pestañas).
      - Accesos directos (shortcuts) se siguen.
-  3. Si BASE_FILE_ID está definido, baja también ese archivo (la base de datos de Wyscout).
-     Si no, la base se busca dentro de data_fichas (sirve un acceso directo a "Data Wyscout 26-27").
-  4. Escribe config_auto.py apuntando a datos_drive/... para que build.py lea de ahí
-     (CARPETA_*, ARCHIVO_LISTA = hoja "lista_fichas", ARCHIVO_BASE = base de datos).
+  3. La base de datos se busca en la carpeta de la rama (la que contiene data_fichas):
+     el archivo "Data Wyscout <TEMPORADA>" más reciente. Si la cuenta de servicio no ve esa carpeta,
+     sirve un acceso directo a la base dentro de data_fichas. (Ya NO se busca en todo Drive: las dos
+     ramas tienen un archivo con el mismo nombre.)
+  4. Escribe config_auto.py: las variables de Varonil (CARPETA_*, ARCHIVO_LISTA, ARCHIVO_BASE) y
+     RAMA_FEMENIL = {las mismas, de Femenil} para  python build.py --femenil.
+     Si Femenil falla (p. ej. no está compartida), Varonil sigue igual.
 
 También sirve en tu compu: pon gdrive_key.json junto a este archivo y actualizar.bat lo corre solo.
 
 Variables de entorno:
   GDRIVE_KEY_FILE   ruta al JSON de la cuenta de servicio (default: gdrive_key.json)
-  GDRIVE_FOLDER_ID  ID de la carpeta data_fichas (default: el de abajo)
-  BASE_FILE_ID      ID del archivo "Data Wyscout 26-27" (opcional)
+  GDRIVE_FOLDER_ID  ID de la carpeta data_fichas de Varonil (default: el de abajo)
+  BASE_FILE_ID      ID del archivo "Data Wyscout 26-27" de Varonil (opcional)
+  FEMENIL_LISTA_ID  ID de la hoja lista_fichas de Femenil (su carpeta es la data_fichas de Femenil)
+  TEMPORADA         temporada de la base (default 26-27)
 """
 import io
 import json
@@ -34,7 +43,10 @@ from googleapiclient.http import MediaIoBaseDownload
 FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID") or "1Ylam2ktoNaY9_kERdjeRoGNDKN_0fdpn"
 KEY_FILE = os.environ.get("GDRIVE_KEY_FILE") or "gdrive_key.json"
 BASE_FILE_ID = os.environ.get("BASE_FILE_ID") or ""
-DESTINO = "datos_drive"
+FEMENIL_LISTA_ID = os.environ.get("FEMENIL_LISTA_ID") or "1PqO-IILu8th4w9lDFOJd-2fB_g7YxGbK3TOZKKB1xzE"
+TEMPORADA = os.environ.get("TEMPORADA") or "26-27"
+DESTINO = "datos_drive"                    # Varonil (igual que siempre)
+DESTINO_FEMENIL = "datos_drive_femenil"
 NOMBRE_LISTA = "lista_fichas"        # hoja de Google que llena la página
 NOMBRE_BASE = "data_wyscout"         # se busca un archivo cuyo nombre contenga esto (sin acentos/espacios)
 
@@ -91,26 +103,6 @@ def bajar_archivo(srv, fid, carpeta):
     return destino
 
 
-def base_mas_reciente(srv, nombre_parecido):
-    """Entre todos los archivos que la cuenta de servicio puede ver, el más reciente que se llame igual
-    (o, si no se sabe el nombre, que contenga "Data Wyscout"). Así no importa si alguien subió una copia nueva
-    en vez de reemplazar el archivo: se toma la última. Devuelve el dict del archivo o None."""
-    nombre = (nombre_parecido or "Data Wyscout").replace("'", "\\'")
-    tipos = " or ".join(f"mimeType = '{m}'" for m in (XLSX, SHEET, "application/vnd.ms-excel"))
-    q = f"name contains '{nombre}' and trashed = false and ({tipos})"
-    try:
-        r = srv.files().list(q=q, orderBy="modifiedTime desc", pageSize=10,
-                             fields="files(id, name, mimeType, modifiedTime)",
-                             supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    except Exception as e:
-        print(f"  [aviso] no pude buscar la base de datos por nombre: {e}")
-        return None
-    archivos = r.get("files", [])
-    for f in archivos:
-        print(f"    visto: {f['name']}  (modificado {f.get('modifiedTime', '?')[:16].replace('T', ' ')} UTC)")
-    return archivos[0] if archivos else None
-
-
 def nombre_seguro(n):
     return re.sub(r'[\\/:*?"<>|]', "_", n).strip() or "sin_nombre"
 
@@ -120,7 +112,7 @@ def listar(srv, folder_id):
     while True:
         r = srv.files().list(
             q=f"'{folder_id}' in parents and trashed = false",
-            fields="nextPageToken, files(id, name, mimeType, shortcutDetails)",
+            fields="nextPageToken, files(id, name, mimeType, modifiedTime, shortcutDetails)",
             pageSize=1000, pageToken=token,
             supportsAllDrives=True, includeItemsFromAllDrives=True,
         ).execute()
@@ -168,6 +160,77 @@ def descargar(srv, folder_id, ruta, cuenta, nivel=0):
             cuenta["errores"] += 1
 
 
+def padre(srv, fid):
+    """ID de la carpeta que contiene a fid (None si no se puede ver)."""
+    try:
+        p = srv.files().get(fileId=fid, fields="parents", supportsAllDrives=True).execute().get("parents") or []
+        return p[0] if p else None
+    except Exception:                               # noqa: BLE001
+        return None
+
+
+def base_en_carpeta(srv, carpeta_id):
+    """En la carpeta de la rama, el "Data Wyscout <TEMPORADA>" más reciente (archivo o acceso directo)."""
+    try:
+        items = listar(srv, carpeta_id)
+    except Exception as e:                          # noqa: BLE001
+        print(f"  [aviso] no puedo ver la carpeta de la rama ({e})")
+        return None
+    cand = []
+    for f in items:
+        mime, fid = f["mimeType"], f["id"]
+        if mime == SHORTCUT:
+            det = f.get("shortcutDetails") or {}
+            mime, fid = det.get("targetMimeType", mime), det.get("targetId", fid)
+        n = _slug(f["name"])
+        if mime in (XLSX, SHEET, "application/vnd.ms-excel") and NOMBRE_BASE in n and _slug(TEMPORADA) in n:
+            cand.append(dict(f, id=fid, mimeType=mime))
+    cand.sort(key=lambda f: f.get("modifiedTime", ""), reverse=True)
+    for f in cand:
+        print(f"    visto: {f['name']}  (modificado {f.get('modifiedTime', '?')[:16].replace('T', ' ')} UTC)")
+    return cand[0] if cand else None
+
+
+def bajar_rama(srv, nombre, folder_id, destino, base_id=""):
+    """Baja la data_fichas de una rama a destino/ y su base de datos. Devuelve las variables de config."""
+    raiz = srv.files().get(fileId=folder_id, fields="name", supportsAllDrives=True).execute()
+    print(f"\n== {nombre}: descargando '{raiz['name']}' de Drive -> {destino}/")
+    cuenta = {"archivos": 0, "errores": 0}
+    shutil.rmtree(destino, ignore_errors=True)       # siempre copia limpia (lo borrado en Drive se va)
+    descargar(srv, folder_id, destino, cuenta)
+    print(f"  Listo: {cuenta['archivos']} archivos ({cuenta['errores']} con error)")
+
+    base = None
+    if base_id:
+        base = bajar_archivo(srv, base_id, destino)
+    if not base:
+        carpeta = padre(srv, folder_id)
+        f = base_en_carpeta(srv, carpeta) if carpeta else None
+        if f:
+            try:
+                base = bajar_archivo(srv, f["id"], os.path.join(destino, "_base"))
+                print(f"  Base de datos: {f['name']} (modificada {f.get('modifiedTime', '?')[:16].replace('T', ' ')} UTC)")
+            except Exception as e:                  # noqa: BLE001
+                print(f"  [aviso] no pude bajar '{f['name']}': {e}")
+    if not base:                                    # acceso directo dentro de data_fichas
+        base = buscar_archivo(destino, NOMBRE_BASE)
+        if base:
+            print(f"  Base de datos (acceso directo en data_fichas): {os.path.basename(base)}")
+    lista = buscar_archivo(destino, NOMBRE_LISTA, solo_raiz=True)
+    print(f"  Lista de fichas: {lista or 'no hay'}")
+    print(f"  Base de datos:   {base or 'no se encontró'}")
+    if lista and not base:
+        correo = json.load(open(KEY_FILE)).get("client_email", "la cuenta de servicio")
+        raise RuntimeError(f"Hay lista de fichas pero no encontré 'Data Wyscout {TEMPORADA}' en la carpeta de {nombre}. "
+                           f"Comparte la carpeta 'Scouting 26-27' con {correo} (Lector).")
+    variables = {}
+    for var, sub in SUBCARPETAS.items():
+        variables[var] = os.path.join(destino, sub)      # aunque no exista: así no se cuela la ruta de otra rama
+    variables["ARCHIVO_LISTA"] = lista
+    variables["ARCHIVO_BASE"] = base
+    return variables
+
+
 def main():
     if not os.path.exists(KEY_FILE):
         print(f"[ERROR] No encuentro la llave {KEY_FILE} (secreto GDRIVE_KEY en GitHub).")
@@ -175,55 +238,37 @@ def main():
     cred = service_account.Credentials.from_service_account_file(
         KEY_FILE, scopes=["https://www.googleapis.com/auth/drive.readonly"])
     srv = build("drive", "v3", credentials=cred, cache_discovery=False)
-    try:
-        raiz = srv.files().get(fileId=FOLDER_ID, fields="name", supportsAllDrives=True).execute()
-    except Exception as e:
-        correo = json.load(open(KEY_FILE)).get("client_email", "la cuenta de servicio")
-        print(f"[ERROR] No puedo abrir la carpeta {FOLDER_ID}. ¿Está compartida con {correo}?\n  {e}")
-        sys.exit(1)
-    print(f"Descargando '{raiz['name']}' de Drive -> {DESTINO}/")
-    cuenta = {"archivos": 0, "errores": 0}
-    shutil.rmtree(DESTINO, ignore_errors=True)       # siempre copia limpia (lo borrado en Drive se va)
-    descargar(srv, FOLDER_ID, DESTINO, cuenta)
-    print(f"Listo: {cuenta['archivos']} archivos ({cuenta['errores']} con error)")
+    correo = json.load(open(KEY_FILE)).get("client_email", "la cuenta de servicio")
 
-    base = None
-    if BASE_FILE_ID:
-        try:
-            base = bajar_archivo(srv, BASE_FILE_ID, DESTINO)
-        except Exception as e:
-            correo = json.load(open(KEY_FILE)).get("client_email", "la cuenta de servicio")
-            print(f"[ERROR] No puedo bajar la base de datos {BASE_FILE_ID}. ¿Está compartida con {correo}?\n  {e}")
-            sys.exit(1)
-    if not base:
-        por_atajo = buscar_archivo(DESTINO, NOMBRE_BASE)        # el acceso directo dentro de data_fichas
-        nombre = os.path.splitext(os.path.basename(por_atajo))[0] if por_atajo else None
-        print(f"  Buscando la versión más reciente de la base de datos ({nombre or 'Data Wyscout'})…")
-        f = base_mas_reciente(srv, nombre)
-        if f:
-            try:
-                base = bajar_archivo(srv, f["id"], os.path.join(DESTINO, "_base"))
-                print(f"  Base de datos: {f['name']} (modificada {f.get('modifiedTime', '?')[:16].replace('T', ' ')} UTC)")
-            except Exception as e:
-                print(f"  [aviso] no pude bajar '{f['name']}': {e}")
-        base = base or por_atajo
-    lista = buscar_archivo(DESTINO, NOMBRE_LISTA, solo_raiz=True)
-    print(f"  Lista de fichas: {lista or 'no hay (se usan los Excel por posición)'}")
-    print(f"  Base de datos:   {base or 'no se encontró'}")
-    if lista and not base:
-        print("[ERROR] Hay lista de fichas pero no encontré la base de datos (Data Wyscout 26-27).\n"
-              "  Compártela con la cuenta de servicio y pon un acceso directo dentro de data_fichas.")
+    # ---- Varonil (obligatoria)
+    try:
+        varonil = bajar_rama(srv, "Varonil", FOLDER_ID, DESTINO, BASE_FILE_ID)
+    except Exception as e:                          # noqa: BLE001
+        print(f"[ERROR] Varonil: {e}\n  ¿La carpeta {FOLDER_ID} está compartida con {correo}?")
         sys.exit(1)
+    for var in ("CARPETA_FOTOS", "CARPETA_MAPAS"):     # las demás (excel, radar, …) ya son opcionales
+        if not os.path.isdir(varonil[var]):
+            print(f"  [aviso] Varonil no tiene la subcarpeta '{SUBCARPETAS[var]}' en Drive ({var})")
+
+    # ---- Femenil (si falla, Varonil sigue)
+    femenil = None
+    carpeta_fem = padre(srv, FEMENIL_LISTA_ID) if FEMENIL_LISTA_ID else None
+    if not carpeta_fem:
+        print(f"\n[AVISO] Femenil: no puedo ver la hoja lista_fichas de Femenil ({FEMENIL_LISTA_ID}).\n"
+              f"  Comparte la carpeta 'Scouting 26-27' con {correo} (Lector). Se sigue sin Femenil.")
+    else:
+        try:
+            femenil = bajar_rama(srv, "Femenil", carpeta_fem, DESTINO_FEMENIL)
+        except Exception as e:                      # noqa: BLE001
+            print(f"\n[AVISO] Femenil: {e}\n  Se sigue sin Femenil.")
+            femenil = None
 
     lineas = ["# Generado por descargar_drive.py. No se sube al repo; se reescribe en cada corrida.\n"]
-    for var, sub in SUBCARPETAS.items():
-        p = os.path.join(DESTINO, sub)
-        if not os.path.isdir(p):
-            print(f"  [aviso] no existe la subcarpeta '{sub}' en Drive ({var})")
-        lineas.append(f'{var} = r"{p}"\n')
-    lineas.append(f'ARCHIVO_LISTA = {repr(lista)}\n')
-    lineas.append(f'ARCHIVO_BASE = {repr(base)}\n')
+    for var, valor in varonil.items():
+        lineas.append(f"{var} = {valor!r}\n")
+    lineas.append(f"RAMA_FEMENIL = {femenil!r}\n")
     open("config_auto.py", "w", encoding="utf-8").writelines(lineas)
+    print("\nconfig_auto.py listo (Varonil" + (" y Femenil)" if femenil else ", sin Femenil)"))
 
 
 if __name__ == "__main__":

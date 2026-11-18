@@ -13,8 +13,12 @@
     if (txt != null) e.textContent = txt;
     return e;
   };
-  const guardar = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch (e) { /* sin storage */ } };
-  const leer = (k) => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
+  // Sección de la página: Varonil (docs/) o Femenil (docs/femenil/, que pone window.RAMA = 'femenil')
+  const RAMA = window.RAMA === 'femenil' ? 'femenil' : 'varonil';
+  // el estado de "publicando" es de cada sección; el PIN es el mismo para las dos
+  const k_ = (k) => (k === 'pinFichas' || RAMA === 'varonil' ? k : `${k}_${RAMA}`);
+  const guardar = (k, v) => { try { v == null ? sessionStorage.removeItem(k_(k)) : sessionStorage.setItem(k_(k), v); } catch (e) { /* sin storage */ } };
+  const leer = (k) => { try { return sessionStorage.getItem(k_(k)); } catch (e) { return null; } };
 
   let pin = leer('pinFichas');
 
@@ -23,7 +27,7 @@
     let r;
     for (let k = 1; ; k++) {
       try {
-        r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, pin, ...datos }) });
+        r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, pin, rama: RAMA, ...datos }) });
         if (r.ok) break;
         if (k >= intentos) throw new Error(`El servidor respondió ${r.status}`);
       } catch (e) {                      // "Failed to fetch": Google tardó o se cortó la conexión -> reintenta
@@ -422,13 +426,29 @@
       return false;
     }
   }
-  window.Fichas = { eliminar };
+  // Foto, mapa y video permanentes: se mandan en segundo plano, SIN PIN y sin avisos (el Apps Script los guarda
+  // en el Drive de la sección y publica solo). Devuelve una promesa; si falla, la página solo lo anota en la caja.
+  async function guardarPublico(accion, datos) {
+    for (let k = 1; ; k++) {
+      try {
+        const r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, rama: RAMA, ...datos }) });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || 'Error desconocido');
+        return j;
+      } catch (e) {
+        if (k >= 3) throw e;
+        await new Promise((ok) => setTimeout(ok, 2000 * k));
+      }
+    }
+  }
+
+  window.Fichas = { eliminar, guardarPublico };
 
   // Fichas eliminadas que GitHub todavía no quita de la página: se ocultan al momento para todos.
   // Si Google no responde, la página sigue normal.
   (async () => {
     try {
-      const r = await fetch(`${URL_API}?accion=eliminadas&ts=${Date.now()}`);
+      const r = await fetch(`${URL_API}?accion=eliminadas&rama=${RAMA}&ts=${Date.now()}`);
       const j = await r.json();
       if (j.ok && window.FichasApp) window.FichasApp.ocultarEliminadas(j.eliminadas);
     } catch (e) { /* sin conexión con Google: no se oculta nada */ }
