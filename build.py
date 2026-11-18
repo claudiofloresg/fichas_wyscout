@@ -505,7 +505,10 @@ def leer_excel(path):
         print(f"  [aviso] {os.path.basename(path)}: no trae la columna '{C.COL_JUGADOR}'; se omite")
         return None
     df = df[df[C.COL_JUGADOR].notna() & (df[C.COL_JUGADOR].astype(str).str.strip() != "")].reset_index(drop=True)
-    from radares import completar_equipo                  # Team vacío -> equipo de la temporada
+    try:
+        from radares import completar_equipo              # Team vacío -> equipo de la temporada
+    except ImportError:
+        return df
     return completar_equipo(df, C.COL_EQUIPO)
 
 
@@ -748,7 +751,6 @@ def grupos_pumas(base, rep):
     La posición sale de la 1a posición de Wyscout (CF -> Delantero, LCB -> Defensa Central…) o de PUMAS_POSICION.
     Radares: individual + vs promedio de la liga (sin comparativo)."""
     import radares as R
-    R.LIGAS_ANTERIORES.update({R._slug(k): v for k, v in (cfg("LIGAS_ANTERIORES", {}) or {}).items()})
     ref = liga_referencia(base)
     ligas = cfg("PUMAS_LIGAS") or [ref]
     minimo = cfg("PUMAS_MIN_MINUTOS", 1)
@@ -829,7 +831,6 @@ def main():
             sys.exit(1)
     if modo == "lista" or (arch_base and os.path.isfile(ruta(arch_base))):
         import radares as R
-        R.LIGAS_ANTERIORES.update({R._slug(k): v for k, v in (cfg("LIGAS_ANTERIORES", {}) or {}).items()})
         mod_radares = cargar_modulo_radares(rep) if modo == "lista" else None
         print(f"Base de datos: {os.path.basename(arch_base)}")
         base = R.Base(ruta(arch_base))
@@ -871,7 +872,6 @@ def main_pumas(rep, arch_base):
               "  Pon gdrive_key.json en esta carpeta, o ARCHIVO_BASE en config_local.py.")
         sys.exit(1)
     import radares as R
-    R.LIGAS_ANTERIORES.update({R._slug(k): v for k, v in (cfg("LIGAS_ANTERIORES", {}) or {}).items()})
     print(f"Base de datos: {os.path.basename(arch_base)}")
     base = R.Base(ruta(arch_base))
     mod_radares = cargar_modulo_radares(rep)
