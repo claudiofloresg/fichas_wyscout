@@ -292,15 +292,16 @@
   meta.remove();                                       // la fecha queda en el tooltip del botón
 
   function botonPublicar() {
-    btnPub.disabled = corriendo || !filas.length || !pendiente;
+    btnPub.disabled = !filas.length || !pendiente;       // nunca se bloquea por otra publicación: GitHub las pone en fila
     btnPub.textContent = '⬆ Publicar fichas';
     btnPub.title = !filas.length ? 'La lista está vacía' : (!pendiente ? 'No hay cambios en la lista. Para traer datos nuevos usa “Actualizar datos”.' : '');
-    btnAct.disabled = corriendo;
+    btnAct.disabled = false;
   }
 
-  function encabezado(clase, texto) {
-    btnNueva.className = 'hdr' + (clase ? ' ' + clase : '');
-    btnNueva.textContent = texto || '＋ Nueva ficha';
+  // El botón del encabezado siempre es "＋ Nueva ficha" (el avance de una publicación solo se ve dentro de la ventana)
+  function encabezado() {
+    btnNueva.className = 'hdr';
+    btnNueva.textContent = '＋ Nueva ficha';
   }
 
   function ponerEstado(clase, partes) {
@@ -372,8 +373,8 @@
   async function lanzar(accion) {
     if (!(await conPin())) return;
     const msgConf = accion === 'publicar'
-      ? `Se publicarán las ${filas.length} fichas de la lista.\nTarda de 2 a 5 minutos y puedes seguir usando la página. ¿Continuar?`
-      : 'Se vuelve a bajar todo de Drive (base de datos, fotos, mapas, radares y stats manuales) y se rehacen las fichas,\nincluidas las de Pumas.\nTarda de 3 a 6 minutos y puedes seguir usando la página. ¿Continuar?';
+      ? `¿Publicar las ${filas.length} fichas de la lista?`
+      : '¿Actualizar datos? Se vuelve a bajar todo de Drive y se rehacen las fichas.';
     if (!confirm(msgConf)) return;
     corriendo = true; botonPublicar();
     ponerEstado('corre', ['Enviando…']);
