@@ -9,7 +9,7 @@
  *     de los Excel por posición. Para que una de Excel vuelva a salir: borra su renglón de "Eliminadas".
  *  3. Publica (dispara el workflow de GitHub).
  * Y doGet(?accion=eliminadas&rama=…) le da a la página la lista de eliminadas (solo jugador, equipo, posición y fecha;
- * sin PIN) para que las oculte AL MOMENTO a todos, sin esperar a GitHub. Eliminar sí pide PIN.
+ * sin PIN) para que las oculte AL MOMENTO a todos, sin esperar a GitHub. Eliminar tampoco pide PIN.
  */
 const HOJA_ELIMINADAS = 'Eliminadas';
 const ENC_ELIMINADAS = ['Jugador', 'Equipo', 'Posición', 'Liga', 'Nombre completo', 'Fecha'];
@@ -22,7 +22,7 @@ function eliminarFicha_(d) {
   const fila = d.fila || {};
   let quitadas = 0;
   const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
+  lock.waitLock(30000);
   try {
     // 1) renglón de la lista (tal cual está en la hoja; si no viene, por nombre + liga + posición)
     const sh = hoja_(sec);
@@ -54,8 +54,8 @@ function eliminarFicha_(d) {
     lock.releaseLock();
   }
 
-  // 3) publicar
-  publicar_();
+  // 3) publicar (si GitHub falla, la ficha ya quedó eliminada y sale en la siguiente publicación)
+  publicarSilencioso_();
   return { ok: true, quitadas: quitadas };
 }
 

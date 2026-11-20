@@ -41,10 +41,11 @@ function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'Solicitud inválida' }); }
 
-  // Foto, mapa y video: sin PIN (en segundo plano desde la página)
+  // Foto, mapa, video y eliminar ficha: sin PIN (en segundo plano desde la página)
   try {
     if (req.accion === 'guardarImagen') return json_(guardarImagen_(req));
     if (req.accion === 'guardarVideo') return json_(guardarVideo_(req));
+    if (req.accion === 'eliminar') return json_(eliminarFicha_(req));
   } catch (err) {
     return json_({ ok: false, error: String(err.message || err) });
   }
@@ -63,7 +64,6 @@ function doPost(e) {
   try {
     const sec = seccion_(req.rama);
     switch (req.accion) {
-      case 'eliminar': return json_(eliminarFicha_(req));
       case 'verificar': return json_({ ok: true });
       case 'lista': return json_({ ok: true, filas: leerFilas_(sec), pendiente: pendiente_(sec) });
       case 'agregar': return json_(agregar_(req));

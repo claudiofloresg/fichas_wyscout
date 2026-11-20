@@ -401,31 +401,11 @@
   }
 
   // ------------------------------------------------------------------ eliminar ficha (botón "🗑 Eliminar ficha" de app.js)
-  // Lista: se borra su renglón. Excel: se anota en la pestaña "Eliminadas". En los dos casos se publica solo.
-  async function eliminar(j) {
-    if (corriendo) { alert('Hay una publicación en curso. Espera a que termine y vuelve a intentarlo.'); return false; }
-    if (!(await conPin())) return false;
-    if (!confirm(`¿Eliminar la ficha de ${j.nombre} (${j.posicion}, ${j.equipo || 'sin equipo'})?\n`
-      + 'Se quita de la página y se publica sola (2 a 5 minutos).')) return false;
-    corriendo = true; botonPublicar();
-    encabezado('corre', '⏳ Eliminando…');
-    try {
-      try {
-        await api('eliminar', { jugador: j.nombreExcel, equipo: j.equipo || '', posicion: j.posicion, liga: j.liga || '',
-          nombre: j.nombre || '', fila: j.fila || null }, 1);        // sin reintentos: podría mandarse dos veces
-      } catch (e) {
-        if (!/respuesta del servidor/.test(e.message)) throw e;
-        await new Promise((ok) => setTimeout(ok, 4000));
-        const r = await api('estado');
-        if (!r.run || r.run.status === 'completed') throw e;
-      }
-      enCola('eliminar');
-      return true;
-    } catch (e) {
-      corriendo = false; botonPublicar(); encabezado();
-      alert('No se pudo eliminar: ' + e.message);
-      return false;
-    }
+  // Sin PIN y en segundo plano (app.js ya pidió confirmación y la quitó de la página). Lista: se borra su renglón.
+  // Excel: se anota en la pestaña "Eliminadas". En los dos casos se publica solo. Devuelve una promesa.
+  function eliminar(j) {
+    return guardarPublico('eliminar', { jugador: j.nombreExcel, equipo: j.equipo || '', posicion: j.posicion,
+      liga: j.liga || '', nombre: j.nombre || '', fila: j.fila || null });
   }
   // Foto, mapa y video permanentes: se mandan en segundo plano, SIN PIN y sin avisos (el Apps Script los guarda
   // en el Drive de la sección y publica solo). Devuelve una promesa; si falla, la página solo lo anota en la caja.

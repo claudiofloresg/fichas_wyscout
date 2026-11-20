@@ -329,16 +329,21 @@
     ocupado = false; btnEquipo.disabled = false;
   });
 
-  // ---------------------------------------------------------------- eliminar ficha (lo hace nueva.js: PIN + Apps Script + publicar)
+  // ---------------------------------------------------------------- eliminar ficha (sin PIN; en segundo plano)
+  // Se quita de la página al momento y nueva.js manda el borrado a Apps Script (que publica solo).
+  // Si Google falla, la ficha vuelve a la lista con un aviso.
   const btnEliminar = $('btnEliminar');
-  btnEliminar.addEventListener('click', async () => {
+  btnEliminar.addEventListener('click', () => {
     if (!actual || ocupado || !window.Fichas || !window.Fichas.eliminar) return;
     const j = actual;
-    btnEliminar.disabled = true;
-    let hecho = false;
-    try { hecho = await window.Fichas.eliminar(j); } catch (e) { status.textContent = 'Error: ' + e.message; }
-    if (!hecho) { btnEliminar.disabled = !actual; return; }
+    if (!confirm(`¿Eliminar la ficha de ${j.nombre} (${j.posicion}, ${j.equipo || 'sin equipo'})?`)) return;
+    const lugares = D.posiciones.map((p) => [p, p.jugadores.indexOf(j)]).filter(([, i]) => i >= 0);
     sacar(new Set([j]), `Se eliminó la ficha de ${j.nombre}.`);
+    window.Fichas.eliminar(j).catch((e) => {
+      lugares.forEach(([p, i]) => { if (!p.jugadores.includes(j)) p.jugadores.splice(Math.min(i, p.jugadores.length), 0, j); });
+      pintarLista();
+      alert(`No se pudo eliminar la ficha de ${j.nombre}: ${e.message}\nVolvió a la lista; intenta de nuevo.`);
+    });
   });
 
   // quita fichas de la página al momento (sin esperar a que GitHub vuelva a publicar)
