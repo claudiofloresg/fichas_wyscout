@@ -1,1 +1,1 @@
-window.FICHAS = {"generado":"23/11/2026 09:56","modo":"lista","posiciones":[],"avisosLista":{}};
+window.FICHAS = {"generado":"23/11/2026 10:01","modo":"lista","posiciones":[],"avisosLista":{}};
