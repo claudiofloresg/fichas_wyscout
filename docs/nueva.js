@@ -298,16 +298,17 @@
     btnAct.disabled = false;
   }
 
-  // El botón del encabezado siempre es "＋ Nueva ficha" (el avance de una publicación solo se ve dentro de la ventana)
-  function encabezado() {
-    btnNueva.className = 'hdr';
-    btnNueva.textContent = '＋ Nueva ficha';
+  // El botón del encabezado es "＋ Nueva ficha"; solo cambia a "✓ Ver fichas nuevas" cuando ya se publicó.
+  // (El avance de una publicación solo se ve dentro de la ventana; nunca dice "Publicando…" ni "Eliminando…".)
+  function encabezado(clase, texto) {
+    const ok = clase === 'ok';
+    btnNueva.className = 'hdr' + (ok ? ' ok' : '');
+    btnNueva.textContent = ok ? texto : '＋ Nueva ficha';
   }
 
-  function ponerEstado(clase, partes) {
-    estado.className = 'estado' + (clase ? ' ' + clase : '');
-    estado.replaceChildren(...partes);
-  }
+  // Dentro de la ventana no se muestra ningún aviso de publicación (pedido): esa zona queda vacía.
+  estado.hidden = true;
+  function ponerEstado() {}
 
   async function revisarEstado(seguir = true) {
     try {
@@ -390,7 +391,7 @@
       }
       pendiente = false; pintarFilas();
       enCola(accion);
-    } catch (e) { corriendo = false; botonPublicar(); ponerEstado('mal', [e.message]); }
+    } catch (e) { corriendo = false; botonPublicar(); alert(e.message); }   // no se pudo mandar: sí se avisa
   }
   const textoCorre = (accion) => ({ publicar: '⏳ Publicando…', actualizar: '⏳ Actualizando…', eliminar: '⏳ Eliminando…' })[accion] || '⏳ Publicando…';
   function enCola(accion) {
