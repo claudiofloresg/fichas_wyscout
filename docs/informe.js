@@ -287,7 +287,8 @@ const Informe = (() => {
       const slot = (R.x1 - R.x0) / n;
       ims.forEach((im, k) => g.imagen(im, R.x0 + k * slot + R.sep / 2, R.y, slot - R.sep, h, { arriba: true }));
     } else {
-      t('Sin radares', P.w / 2, (R.y + R.yFin) / 2, { font: f.ital, size: 8.5, color: C.faint, align: 'center' });
+      if (jug.radaresMsg) t(jug.radaresMsg, P.w / 2, (R.y + R.yFin) / 2, { font: f.ital, size: 8.5, color: C.faint, align: 'center' });
+      else t('Sin radares', P.w / 2, (R.y + R.yFin) / 2, { font: f.ital, size: 8.5, color: C.faint, align: 'center' });
     }
 
     // ---------- pie de página (debajo de la línea azul)

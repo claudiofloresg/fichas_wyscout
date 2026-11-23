@@ -983,6 +983,22 @@ def copiar_pagina_pumas():
               "\n  Copia la carpeta docs/vendor del zip que te mandaron y vuelve a correr fichas_pumas.bat.")
 
 
+MSG_SIN_MINUTOS = "El jugador no cuenta con los minutos suficientes para un análisis estadístico"
+
+
+def pasa_minutos(R, base, ficha):
+    """¿El jugador pasa el mismo filtro de minutos que la muestra de los radares (radares.filtro_minutos)?
+    Si no se encuentra en la base, se deja pasar (radares.py da su propio aviso)."""
+    try:
+        liga = base.liga(ficha["liga"])
+        fila = base.jugador(liga, ficha["id"], ficha.get("equipo")) if liga else None
+        if fila is None:
+            return True
+        return not R.filtro_minutos(fila.to_frame().T).empty
+    except Exception:
+        return True
+
+
 def armar(rep, modo, grupos, base, mod_radares):
     etiqueta_pumas = cfg("PUMAS_ETIQUETA", "Pumas UNAM")
     cache_path = os.path.join(OUT_IMG["radares"], ".cache_radares.json")
@@ -1060,9 +1076,13 @@ def armar(rep, modo, grupos, base, mod_radares):
                 rep["sin_mapa"].append(nom_x)
 
             radares = []
+            radares_msg = None
             ficha = df.at[i, "_ficha"] if "_ficha" in df.columns else None
             if ficha and cfg("RADARES_MANUALES_PRIMERO", True) and buscar_radares(idx_radares, posicion, *claves):
                 ficha = None                                # ya tiene radares hechos a mano en Drive: se usan esos
+            if ficha and mod_radares and not pasa_minutos(mod_radares, base, ficha):
+                ficha = None                                # no pasa el filtro de minutos de los radares: sin radares
+                radares_msg = MSG_SIN_MINUTOS
             if ficha and mod_radares:                       # modo lista: radares automáticos
                 ficha = dict(ficha, clave_extra=[cfg("RADAR_LADO_MAX"), cfg("MAX_RADARES", 4)])
                 try:
@@ -1077,14 +1097,14 @@ def armar(rep, modo, grupos, base, mod_radares):
                     dst = f"img/radares/{os.path.basename(r)}"
                     usados.add(dst)
                     radares.append(dst)
-            rr = {} if radares else buscar_radares(idx_radares, posicion, *claves)
+            rr = {} if radares or radares_msg else buscar_radares(idx_radares, posicion, *claves)
             for f in rr.get("ignorados", []):
                 rep["radar_ignorado"].append(f"{nom_x}: {f}")
             # orden en la ficha: jugador, promedio (siempre 2o), vs...
             fuentes = ([("jugador", rr["jugador"])] if rr.get("jugador") else []) \
                 + ([("promedio", rr["promedio"])] if rr.get("promedio") else []) \
                 + [(f"vs{k + 1}", s) for k, s in enumerate(rr.get("vs", []))]
-            if radares:
+            if radares or radares_msg:
                 pass
             elif not rr:
                 rep["sin_radar"].append(f"[{posicion}] {nom_x}: no hay carpeta de radares")
@@ -1127,6 +1147,7 @@ def armar(rep, modo, grupos, base, mod_radares):
                 "foto": foto,
                 "mapa": mapa,
                 "video": videos.get(slug(nom_x)),
+                "radaresMsg": radares_msg,
                 "nombrePortada": nombre_portada(nom_x, completo),
                 "radares": radares,
                 "fila": (df.at[i, "_fila"] if "_fila" in df.columns and isinstance(df.at[i, "_fila"], dict) else None),
