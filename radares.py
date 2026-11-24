@@ -56,7 +56,7 @@ VERSION = "radares-3"          # súbelo si cambias cálculos o estilo: fuerza a
 CREDITO = 'Elaborado por Inteligencia Deportiva "Pumas"'
 # Factor de nivel de liga (solo radares contra Liga MX). La clave se busca dentro del nombre de la hoja
 # (sin acentos ni mayúsculas): "u21" vale para "Liga MX U21" y "Liga MX U21 - 2526". Las demás ligas = 1.
-FACTOR_LIGA = {"u21": 0.5, "expansion": 0.4}
+FACTOR_LIGA = {"u21": 0.5, "expansion": 0.4, "Primera División - Chile": 0.7}
 
 # Leyenda del radar individual (azul, amarillo, rojo) por posición. Las que no estén aquí usan "_default".
 LEYENDAS = {
