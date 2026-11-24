@@ -15,6 +15,11 @@
   };
   // Sección de la página: Varonil (docs/) o Femenil (docs/femenil/, que pone window.RAMA = 'femenil')
   const RAMA = window.RAMA === 'femenil' ? 'femenil' : 'varonil';
+  // Temporada de esta página (docs/ = la actual; docs/25-26/ = 25-26…): las fichas nuevas son de esta temporada
+  // y en la lista solo se ven las de esta temporada.
+  const ACTUAL = (window.FICHAS && window.FICHAS.temporadaActual) || '26-27';
+  const TEMP = (window.FICHAS && window.FICHAS.temporada) || ACTUAL;
+  const deTemp = (fs) => (fs || []).filter((f) => (f.temporada || ACTUAL) === TEMP);
   // el estado de "publicando" es de cada sección; el PIN es el mismo para las dos
   const k_ = (k) => (k === 'pinFichas' || RAMA === 'varonil' ? k : `${k}_${RAMA}`);
   const guardar = (k, v) => { try { v == null ? sessionStorage.removeItem(k_(k)) : sessionStorage.setItem(k_(k), v); } catch (e) { /* sin storage */ } };
@@ -27,7 +32,7 @@
     let r;
     for (let k = 1; ; k++) {
       try {
-        r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, pin, rama: RAMA, ...datos }) });
+        r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, pin, rama: RAMA, temporada: TEMP, ...datos }) });
         if (r.ok) break;
         if (k >= intentos) throw new Error(`El servidor respondió ${r.status}`);
       } catch (e) {                      // "Failed to fetch": Google tardó o se cortó la conexión -> reintenta
@@ -169,7 +174,7 @@
   // ------------------------------------------------------------------ lista actual
   function pintarFilas() {
     tbody.replaceChildren();
-    filas.forEach((f) => {
+    filas.slice().reverse().forEach((f) => {             // la última agregada hasta arriba
       const tr = el('tr');
       const av = AVISOS[clave(f.id, f.liga, f.posicion)];
       if (av) { tr.className = 'conaviso'; tr.title = av.join('\n'); }
@@ -195,7 +200,7 @@
 
   async function cargarLista() {
     cuenta.textContent = 'Cargando lista…';
-    try { const r = await api('lista'); filas = r.filas || []; pendiente = !!r.pendiente; pintarFilas(); } catch (e) { cuenta.textContent = e.message; }
+    try { const r = await api('lista'); filas = deTemp(r.filas); pendiente = !!r.pendiente; pintarFilas(); } catch (e) { cuenta.textContent = e.message; }
   }
 
   function editar(f) {
@@ -223,7 +228,7 @@
 
   async function quitar(f) {
     if (!confirm(`¿Quitar a ${f.id} (${f.posicion}) de la lista?\nSu ficha desaparece de la página en la próxima publicación.`)) return;
-    try { filas = (await api('quitar', { id: f.id, liga: f.liga, posicion: f.posicion })).filas; pendiente = true; pintarFilas(); } catch (e) { alert(e.message); }
+    try { filas = deTemp((await api('quitar', { id: f.id, liga: f.liga, posicion: f.posicion })).filas); pendiente = true; pintarFilas(); } catch (e) { alert(e.message); }
   }
 
   // ------------------------------------------------------------------ abrir
@@ -266,7 +271,7 @@
     msg.textContent = 'Guardando…';
     try {
       const r = await api('agregar', d);
-      filas = r.filas; pendiente = true;
+      filas = deTemp(r.filas); pendiente = true;
       const eraEdicion = !!editando;
       salirEdicion();
       msg.textContent = `${eraEdicion || !r.nuevo ? 'Corregido' : 'Agregado'}: ${d.id}. Cuando termines, “Publicar fichas”.`;
@@ -414,7 +419,7 @@
   async function guardarPublico(accion, datos) {
     for (let k = 1; ; k++) {
       try {
-        const r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, rama: RAMA, ...datos }) });
+        const r = await fetch(URL_API, { method: 'POST', body: JSON.stringify({ accion, rama: RAMA, temporada: TEMP, ...datos }) });
         const j = await r.json();
         if (!j.ok) throw new Error(j.error || 'Error desconocido');
         return j;

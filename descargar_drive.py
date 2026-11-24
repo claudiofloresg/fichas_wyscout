@@ -28,6 +28,12 @@ Variables de entorno:
   BASE_FILE_ID      ID del archivo "Data Wyscout 26-27" de Varonil (opcional)
   FEMENIL_LISTA_ID  ID de la hoja lista_fichas de Femenil (su carpeta es la data_fichas de Femenil)
   TEMPORADA         temporada de la base (default 26-27)
+  TEMPORADAS_ANTERIORES  temporadas viejas de Varonil, separadas por coma (default "25-26,24-25")
+
+Temporadas anteriores (solo Varonil): se busca "Data Wyscout <temporada>" primero en la carpeta de Varonil
+(junto a la 26-27) y, si no está, en todo lo que la cuenta de servicio puede ver (prefiriendo la que está en una
+carpeta llamada "Varonil"). Se baja a datos_drive/_base_<temporada>/ y queda en TEMPORADAS_BASE de config_auto.py.
+Si una no se encuentra, esa temporada no se genera (las demás siguen).
 """
 import io
 import json
@@ -45,6 +51,7 @@ KEY_FILE = os.environ.get("GDRIVE_KEY_FILE") or "gdrive_key.json"
 BASE_FILE_ID = os.environ.get("BASE_FILE_ID") or ""
 FEMENIL_LISTA_ID = os.environ.get("FEMENIL_LISTA_ID") or "1PqO-IILu8th4w9lDFOJd-2fB_g7YxGbK3TOZKKB1xzE"
 TEMPORADA = os.environ.get("TEMPORADA") or "26-27"
+TEMPORADAS_ANTERIORES = [x.strip() for x in (os.environ.get("TEMPORADAS_ANTERIORES") or "25-26,24-25").split(",") if x.strip()]
 DESTINO = "datos_drive"                    # Varonil (igual que siempre)
 DESTINO_FEMENIL = "datos_drive_femenil"
 NOMBRE_LISTA = "lista_fichas"        # hoja de Google que llena la página
@@ -169,8 +176,9 @@ def padre(srv, fid):
         return None
 
 
-def base_en_carpeta(srv, carpeta_id):
-    """En la carpeta de la rama, el "Data Wyscout <TEMPORADA>" más reciente (archivo o acceso directo)."""
+def base_en_carpeta(srv, carpeta_id, temporada=None):
+    """En la carpeta de la rama, el "Data Wyscout <temporada>" más reciente (archivo o acceso directo)."""
+    temporada = temporada or TEMPORADA
     try:
         items = listar(srv, carpeta_id)
     except Exception as e:                          # noqa: BLE001
@@ -183,12 +191,78 @@ def base_en_carpeta(srv, carpeta_id):
             det = f.get("shortcutDetails") or {}
             mime, fid = det.get("targetMimeType", mime), det.get("targetId", fid)
         n = _slug(f["name"])
-        if mime in (XLSX, SHEET, "application/vnd.ms-excel") and NOMBRE_BASE in n and _slug(TEMPORADA) in n:
+        if mime in (XLSX, SHEET, "application/vnd.ms-excel") and NOMBRE_BASE in n and _slug(temporada) in n:
             cand.append(dict(f, id=fid, mimeType=mime))
     cand.sort(key=lambda f: f.get("modifiedTime", ""), reverse=True)
     for f in cand:
         print(f"    visto: {f['name']}  (modificado {f.get('modifiedTime', '?')[:16].replace('T', ' ')} UTC)")
     return cand[0] if cand else None
+
+
+def buscar_base_global(srv, temporada, rama="varonil"):
+    """"Data Wyscout <temporada>" en todo lo que ve la cuenta de servicio. Si hay varias, gana la que está en una
+    carpeta llamada como la rama (Varonil); nunca una que esté en una carpeta "Femenil" (si es otra rama)."""
+    items, token = [], None
+    while True:
+        r = srv.files().list(
+            q="name contains 'Wyscout' and trashed = false",
+            fields="nextPageToken, files(id, name, mimeType, modifiedTime, parents, shortcutDetails)",
+            pageSize=1000, pageToken=token, supportsAllDrives=True, includeItemsFromAllDrives=True,
+        ).execute()
+        items += r.get("files", [])
+        token = r.get("nextPageToken")
+        if not token:
+            break
+    nombres = {}
+
+    def carpeta(f):
+        p = (f.get("parents") or [None])[0]
+        if p and p not in nombres:
+            try:
+                nombres[p] = _slug(srv.files().get(fileId=p, fields="name", supportsAllDrives=True).execute()["name"])
+            except Exception:                       # noqa: BLE001
+                nombres[p] = ""
+        return nombres.get(p, "")
+
+    otra = "femenil" if rama == "varonil" else "varonil"
+    cand = []
+    for f in items:
+        mime, fid = f["mimeType"], f["id"]
+        if mime == SHORTCUT:
+            det = f.get("shortcutDetails") or {}
+            mime, fid = det.get("targetMimeType", mime), det.get("targetId", fid)
+        n = _slug(f["name"])
+        if mime in (XLSX, SHEET, "application/vnd.ms-excel") and NOMBRE_BASE in n and _slug(temporada) in n:
+            c = carpeta(f)
+            if otra in c:
+                continue
+            cand.append((rama in c, f.get("modifiedTime", ""), dict(f, id=fid, mimeType=mime)))
+    cand.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return cand[0][2] if cand else None
+
+
+def bajar_temporadas(srv, folder_id, destino):
+    """Bases de las temporadas anteriores de Varonil -> {temporada: ruta}."""
+    out = {}
+    carpeta = padre(srv, folder_id)
+    for t in TEMPORADAS_ANTERIORES:
+        print(f"\n== Temporada {t} (Varonil)")
+        f = base_en_carpeta(srv, carpeta, t) if carpeta else None
+        if not f:
+            try:
+                f = buscar_base_global(srv, t)
+            except Exception as e:                  # noqa: BLE001
+                print(f"  [aviso] no pude buscar en Drive ({e})")
+        if not f:
+            print(f"  [AVISO] No encontré 'Data Wyscout {t}'. Comparte su carpeta con la cuenta de servicio (Lector). "
+                  "Esa temporada no se actualiza.")
+            continue
+        try:
+            out[t] = bajar_archivo(srv, f["id"], os.path.join(destino, f"_base_{t}"))
+            print(f"  Base de datos: {f['name']} (modificada {f.get('modifiedTime', '?')[:16].replace('T', ' ')} UTC)")
+        except Exception as e:                      # noqa: BLE001
+            print(f"  [AVISO] no pude bajar '{f['name']}': {e}")
+    return out
 
 
 def bajar_rama(srv, nombre, folder_id, destino, base_id=""):
@@ -263,10 +337,19 @@ def main():
             print(f"\n[AVISO] Femenil: {e}\n  Se sigue sin Femenil.")
             femenil = None
 
+    # ---- Temporadas anteriores de Varonil (si una falla, las demás siguen)
+    try:
+        temporadas = bajar_temporadas(srv, FOLDER_ID, DESTINO)
+    except Exception as e:                          # noqa: BLE001
+        print(f"\n[AVISO] Temporadas anteriores: {e}")
+        temporadas = {}
+
     lineas = ["# Generado por descargar_drive.py. No se sube al repo; se reescribe en cada corrida.\n"]
     for var, valor in varonil.items():
         lineas.append(f"{var} = {valor!r}\n")
     lineas.append(f"RAMA_FEMENIL = {femenil!r}\n")
+    lineas.append(f"TEMPORADA_ACTUAL = {TEMPORADA!r}\n")
+    lineas.append(f"TEMPORADAS_BASE = {temporadas!r}\n")
     open("config_auto.py", "w", encoding="utf-8").writelines(lineas)
     print("\nconfig_auto.py listo (Varonil" + (" y Femenil)" if femenil else ", sin Femenil)"))
 

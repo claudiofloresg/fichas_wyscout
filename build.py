@@ -76,6 +76,29 @@ if MODO_FEMENIL:
     print("Rama: Femenil")
 from paises import PAISES
 
+# Temporadas (solo Varonil). La actual va en docs/ como siempre; cada anterior en docs/<temporada>/ (p. ej. docs/25-26/)
+# con su propia base (TEMPORADAS_BASE de config_auto.py) y solo las fichas de lista_fichas con esa Temporada
+# (columna "Temporada"; vacía = la actual).
+#   python build.py --temporada 25-26   -> solo esa temporada
+#   python build.py --temporadas        -> todas las anteriores (si una no tiene base, se deja como estaba)
+TEMPORADA_ACTUAL = str(getattr(C, "TEMPORADA_ACTUAL", None) or "26-27")
+TEMPORADAS_ANTERIORES = list(getattr(C, "TEMPORADAS_ANTERIORES", None) or ["25-26", "24-25"])
+_i = sys.argv.index("--temporada") if "--temporada" in sys.argv else -1
+TEMPORADA = sys.argv[_i + 1] if 0 <= _i < len(sys.argv) - 1 else TEMPORADA_ACTUAL
+MODO_TEMPORADA = TEMPORADA != TEMPORADA_ACTUAL and not MODO_FEMENIL
+if MODO_TEMPORADA:
+    if not re.fullmatch(r"\d{2}-\d{2}", TEMPORADA):
+        print(f"[ERROR] Temporada inválida: {TEMPORADA} (ejemplo: 25-26)")
+        sys.exit(1)
+    _b = (getattr(C, "TEMPORADAS_BASE", None) or {}).get(TEMPORADA)
+    if not _b:
+        print(f"[AVISO] Temporada {TEMPORADA}: no hay base de datos (TEMPORADAS_BASE de config_auto.py). "
+              "Se deja como estaba.")
+        sys.exit(0)
+    C.ARCHIVO_BASE = _b
+    C.COMBINAR_EXCEL = False                     # los Excel por posición son de la temporada actual
+    print(f"Temporada: {TEMPORADA}")
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 # python build.py --pumas  -> fichas de jugadores de Pumas SOLO en esta compu (carpeta pumas_local/, no se sube
 # a GitHub ni toca la página). Sin --pumas -> la página de siempre (docs/), ya sin jugadores de Pumas.
@@ -83,13 +106,14 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 MODO_PUMAS = "--pumas" in sys.argv and not MODO_FEMENIL
 MODO_WEB = MODO_PUMAS and "--web" in sys.argv
 DOCS = (os.path.join(BASE, "docs", "femenil") if MODO_FEMENIL
+        else os.path.join(BASE, "docs", TEMPORADA) if MODO_TEMPORADA and not MODO_PUMAS
         else os.path.join(BASE, "docs", "pumas") if MODO_WEB
         else os.path.join(BASE, "pumas_local" if MODO_PUMAS else "docs"))
 OUT_DATA = os.path.join(DOCS, "data", "fichas.js")
 OUT_OPCIONES = os.path.join(DOCS, "data", "opciones.js")
 OUT_IMG = {k: os.path.join(DOCS, "img", k) for k in ("fotos", "mapas", "radares")}
 REPORTE = os.path.join(BASE, "reporte_pumas.txt" if MODO_PUMAS else "reporte_femenil.txt" if MODO_FEMENIL
-                       else "reporte_build.txt")
+                       else f"reporte_{TEMPORADA}.txt" if MODO_TEMPORADA else "reporte_build.txt")
 
 cfg = lambda nombre, default=None: getattr(C, nombre, default)  # noqa: E731
 
@@ -540,6 +564,7 @@ LISTA_COLUMNAS = {            # columna de la hoja -> palabras con que se recono
     "comp1": ("comparar con 1", "comparar 1", "comparar_con_1"),
     "comp2": ("comparar con 2", "comparar 2", "comparar_con_2"),
     "fecha": ("fecha",),
+    "temporada": ("temporada",),
 }
 
 
@@ -582,7 +607,7 @@ def cargar_lista(path, rep):
         f = {k: val(k) for k in LISTA_COLUMNAS}
         f["fecha"] = _fecha_lista(r[cols["fecha"]]) if "fecha" in cols else None
         f["renglon"] = n + 2
-        clave = (slug(f["id"]), slug(f["liga"] or ""), slug(f["posicion"] or ""))
+        clave = (slug(f["id"]), slug(f["liga"] or ""), slug(f["posicion"] or ""), temporada_de(f.get("temporada")))
         if clave in vistos:
             rep["lista"].append(f"renglón {f['renglon']}: {f['id']} ({f['posicion']}) está repetido; se usa el primero")
             continue
@@ -604,7 +629,7 @@ def cargar_eliminadas(path, rep):
     if df is None:
         return {}
     cols = {slug(c): c for c in df.columns}
-    cj, ce, cp = cols.get("jugador"), cols.get("equipo"), cols.get("posicion")
+    cj, ce, cp, ct = cols.get("jugador"), cols.get("equipo"), cols.get("posicion"), cols.get("temporada")
     if not (cj and cp):
         rep["lista"].append("la pestaña Eliminadas no tiene las columnas Jugador y Posición")
         return {}
@@ -612,6 +637,8 @@ def cargar_eliminadas(path, rep):
     for _, r in df.iterrows():
         if es_vacio(r[cj]) or es_vacio(r[cp]):
             continue
+        if ct and temporada_de(None if es_vacio(r[ct]) else r[ct]) != TEMPORADA:
+            continue                                        # se eliminó en otra temporada
         pos = posicion_de(str(r[cp])) or str(r[cp])
         eq = "" if not ce or es_vacio(r[ce]) else slug(r[ce])
         out.setdefault((slug(r[cj]), slug(pos)), set()).add(eq)
@@ -716,6 +743,16 @@ def exportar_opciones(base):
             es = d["e"].map(slug).str.contains(slug(cfg("EQUIPO_PUMAS", "Pumas")), regex=False)
             pos = df[C.COL_POSICION_WYSCOUT].map(_txt) if C.COL_POSICION_WYSCOUT in df.columns else pd.Series("", index=df.index)
             pumas = [[p, pos.get(i, "")] for i, p in zip(d[es].index, d[es]["p"])]
+    if MODO_TEMPORADA:
+        # "Comparar con": en una temporada anterior salen primero los de la plantilla ACTUAL de Pumas
+        # (con sus datos de esa temporada, si jugaron en la liga de referencia)
+        try:
+            t = open(os.path.join(BASE, "docs", "data", "opciones.js"), encoding="utf-8").read()
+            actuales = json.loads(t[t.index("{"):t.rindex("}") + 1]).get("pumas") or []
+            if actuales:
+                pumas = actuales
+        except (OSError, ValueError):
+            pass
     data = {"ligas": list(base.hojas), "ligaRef": ref, "posiciones": [p for _, p in cfg("POSICIONES", [])],
             "pumas": pumas, "jugadores": jugadores}
     with open(OUT_OPCIONES, "w", encoding="utf-8") as f:
@@ -836,7 +873,8 @@ def main():
         base = R.Base(ruta(arch_base))
         exportar_opciones(base)
     if modo == "lista":
-        filas = cargar_lista(ruta(arch_lista), rep)
+        filas = [f for f in cargar_lista(ruta(arch_lista), rep) if temporada_de(f.get("temporada")) == TEMPORADA]
+        print(f"  Temporada {TEMPORADA}: {len(filas)} fichas")
         rep["_eliminadas"] = cargar_eliminadas(ruta(arch_lista), rep)
         for posicion, df in grupos_lista(filas, base, rep).items():
             grupos.append((posicion, df, "lista_fichas"))
@@ -863,6 +901,52 @@ def main():
     armar(rep, modo, grupos, base, mod_radares)
     if MODO_FEMENIL:
         copiar_pagina_femenil()
+    if MODO_TEMPORADA:
+        copiar_pagina_temporada()
+
+
+def temporada_de(v):
+    """'25-26', '2025-26', ' 25/26 ' -> '25-26'. Vacía -> la actual."""
+    s = re.sub(r"\s+", "", str(v or "")).replace("/", "-").replace("–", "-")
+    m = re.fullmatch(r"(?:20)?(\d{2})-(?:20)?(\d{2})", s)
+    return f"{m.group(1)}-{m.group(2)}" if m else (s or TEMPORADA_ACTUAL)
+
+
+def temporadas_pagina():
+    """Temporadas del selector de Varonil: la actual + las anteriores que tienen base o página ya hecha."""
+    if MODO_FEMENIL or MODO_PUMAS:
+        return []
+    bases = getattr(C, "TEMPORADAS_BASE", None) or {}
+    ant = [t for t in TEMPORADAS_ANTERIORES
+           if t in bases or t == TEMPORADA or os.path.isfile(os.path.join(BASE, "docs", t, "index.html"))]
+    return [TEMPORADA_ACTUAL] + ant if ant else []
+
+
+def copiar_pagina_temporada():
+    """docs/<temporada>/: la MISMA página de docs/index.html con sus datos (data/, img/); el código es el de docs/."""
+    import shutil
+    t = open(os.path.join(BASE, "docs", "index.html"), encoding="utf-8").read()
+    t = re.sub(r"""(src|href)="(vendor|assets)/""", r'\1="../\2/', t)
+    menu = ('<nav class="secciones" aria-label="Sección"><a href="../" class="activa">Varonil</a>'
+            '<a href="../femenil/">Femenil</a><a href="../pumas/">Pumas</a></nav>')
+    t = RE_MENU.sub(lambda m: menu, t, count=1)
+    t = t.replace("['data/fichas.js', 'informe.js', 'app.js', 'config_web.js', 'nueva.js']",
+                  "['data/fichas.js', '../informe.js', '../app.js', '../config_web.js', '../nueva.js']")
+    if "'../app.js'" not in t:
+        print("[AVISO] docs/index.html cambió de forma: revisa docs/" + TEMPORADA + "/index.html")
+    with open(os.path.join(DOCS, "index.html"), "w", encoding="utf-8", newline="\n") as g:
+        g.write(t)
+    shutil.copytree(os.path.join(BASE, "docs", "assets"), os.path.join(DOCS, "assets"), dirs_exist_ok=True)
+
+
+def todas_las_temporadas():
+    """python build.py --temporadas: cada temporada anterior por separado (si una falla, las demás siguen)."""
+    import subprocess
+    for t in TEMPORADAS_ANTERIORES:
+        print(f"\n==================== Temporada {t}")
+        r = subprocess.call([sys.executable, os.path.abspath(__file__), "--temporada", t])
+        if r:
+            print(f"[AVISO] La temporada {t} no se generó (código {r}); se publica lo demás.")
 
 
 def main_pumas(rep, arch_base):
@@ -1199,6 +1283,9 @@ def armar(rep, modo, grupos, base, mod_radares):
         "modo": modo,
         "posiciones": lista,
         "avisosLista": rep.get("_avisos", {}),
+        "temporada": TEMPORADA,
+        "temporadaActual": TEMPORADA_ACTUAL,
+        "temporadas": temporadas_pagina(),
     }
     with open(OUT_DATA, "w", encoding="utf-8") as f:
         f.write("window.FICHAS = ")
@@ -1240,4 +1327,7 @@ def armar(rep, modo, grupos, base, mod_radares):
 
 
 if __name__ == "__main__":
-    main()
+    if "--temporadas" in sys.argv:
+        todas_las_temporadas()
+    else:
+        main()

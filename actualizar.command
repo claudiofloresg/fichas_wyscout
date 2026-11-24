@@ -25,6 +25,8 @@ fi
 
 echo "== 2/3 Generando datos de la pagina =="
 python3 build.py || falla "Hubo un error. Revisa el mensaje de arriba."
+echo "== 2a/3 Generando temporadas anteriores de Varonil (/25-26/, /24-25/) =="
+python3 build.py --temporadas
 echo "== 2b/3 Generando Femenil (/femenil/) =="
 python3 build.py --femenil || echo "[AVISO] No se genero Femenil; se publica lo demas."
 echo "== 2c/3 Generando fichas de Pumas para la pagina (/pumas/) =="

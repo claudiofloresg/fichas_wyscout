@@ -42,6 +42,11 @@ jobs:
       - name: Generar la página (Varonil)
         run: python build.py
 
+      # Temporadas anteriores de Varonil en <página>/25-26/, <página>/24-25/… Si una falla, se publica lo demás.
+      - name: Generar temporadas anteriores (Varonil)
+        continue-on-error: true
+        run: python build.py --temporadas
+
       # Sección Femenil en <página>/femenil/. Si falla, se publica lo demás igual.
       - name: Generar Femenil
         continue-on-error: true
@@ -61,6 +66,7 @@ jobs:
             reporte_build.txt
             reporte_femenil.txt
             reporte_pumas.txt
+            reporte_*-*.txt
           if-no-files-found: ignore
 
       - name: Publicar (solo si cambió algo)
@@ -71,9 +77,13 @@ jobs:
           # la fecha de "generado" y el ?v= cambian siempre: no cuentan como cambio
           quitar='s/"generado":"[^"]*"//'
           igual() { [ "$(git show HEAD:"$1" 2>/dev/null | sed "$quitar")" = "$(sed "$quitar" "$1" 2>/dev/null)" ]; }
-          if git diff --cached --quiet -- . ':(exclude)docs/index.html' ':(exclude)docs/data/fichas.js' \
-               ':(exclude)docs/femenil/data/fichas.js' ':(exclude)docs/pumas/data/fichas.js' \
-             && igual docs/data/fichas.js && igual docs/femenil/data/fichas.js && igual docs/pumas/data/fichas.js; then
+          sin_cambios=1
+          git diff --cached --quiet -- . ':(exclude)docs/index.html' ':(exclude)docs/data/fichas.js' \
+            ':(exclude)docs/*/data/fichas.js' || sin_cambios=0
+          for f in docs/data/fichas.js docs/*/data/fichas.js; do
+            if [ -f "$f" ] && ! igual "$f"; then sin_cambios=0; fi
+          done
+          if [ "$sin_cambios" = 1 ]; then
             echo "Sin cambios en los datos; no se publica."
             exit 0
           fi

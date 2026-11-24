@@ -3,6 +3,19 @@
   const D = window.FICHAS;
   const RAMA = window.RAMA === 'femenil' ? 'femenil' : 'varonil';
   const $ = (id) => document.getElementById(id);
+  // Temporada: la actual vive en docs/ y cada anterior en docs/<temporada>/ (p. ej. 25-26/). Cambiarla abre esa página.
+  const ACTUAL = (D && D.temporadaActual) || '26-27';
+  const TEMP = (D && D.temporada) || ACTUAL;
+  (() => {
+    const ts = (D && D.temporadas) || [];
+    const sel = $('selTemp');
+    if (!sel || ts.length < 2) return;
+    const raiz = TEMP === ACTUAL ? '' : '../';
+    ts.forEach((t) => { const o = document.createElement('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
+    sel.value = TEMP;
+    sel.addEventListener('change', () => { location.href = sel.value === ACTUAL ? (raiz || './') : raiz + sel.value + '/'; });
+    $('bloqueTemp').hidden = false;
+  })();
   const selPos = $('selPos'), txt = $('txtBuscar');
   const lista = $('lista'), status = $('status');
   const btnPdf = $('btnPdf'), btnEquipo = $('btnEquipo'), frame = $('preview'), empty = $('empty');
@@ -373,7 +386,7 @@
     return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')} ${m[4].padStart(2, '0')}:${m[5]}` : ''; };
   function ocultarEliminadas(lista) {
     const gen = aOrden(D.generado);
-    const fuera = new Set((lista || []).filter((e) => !gen || aOrden(e.fecha) >= gen)
+    const fuera = new Set((lista || []).filter((e) => (e.temporada || ACTUAL) === TEMP && (!gen || aOrden(e.fecha) >= gen))
       .map((e) => [norm(e.jugador), norm(e.posicion), norm(e.equipo)].join('|')));
     if (!fuera.size) return;
     const js = new Set();

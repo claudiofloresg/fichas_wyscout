@@ -14,6 +14,8 @@
  *     lista_fichas), con el nombre Wyscout del jugador, y reemplaza la anterior (va a la papelera de Drive).
  *     El video se guarda en la pestaña "Nombres y video" de la lista de la sección. Después se publica solo.
  *  3. Menú "Fichas" dentro de esta hoja: Publicar fichas, Actualizar datos y Ver estado.
+ *  4. Temporadas (columna J "Temporada"): cada ficha es de una temporada (26-27, 25-26, 24-25…). La página manda
+ *     la temporada en la que estás y solo ve/agrega/quita las de esa temporada. Vacía = TEMPORADA_ACTUAL.
  *
  * Propiedades del script (⚙ Configuración del proyecto → Propiedades del script):
  *   PIN           el PIN que se escribe en la página
@@ -28,9 +30,10 @@ const WORKFLOW = 'actualizar.yml';
 const RAMA = 'main';                       // rama de git (no confundir con la sección Varonil/Femenil)
 const PAGINA = 'https://claudiofloresg.github.io/fichas_wyscout/';
 const FEMENIL_LISTA_ID = '1PqO-IILu8th4w9lDFOJd-2fB_g7YxGbK3TOZKKB1xzE';
-// H e I van al final para no mover las columnas que ya existen
+const TEMPORADA_ACTUAL = '26-27';          // la de docs/ (la que sale al abrir la página)
+// H, I y J van al final para no mover las columnas que ya existen
 const ENCABEZADOS = ['ID', 'Liga', 'Posición', 'Nombre completo', 'Comparar con 1', 'Comparar con 2', 'Fecha',
-  'Liga comparar 1', 'Liga comparar 2'];
+  'Liga comparar 1', 'Liga comparar 2', 'Temporada'];
 const HOJA_NOMBRES = 'Nombres y video';
 const ENC_NOMBRES = ['NOMBRE EXCEL', 'NOMBRE COMPLETO', 'VIDEO'];
 const MAX_FALLOS = 8;            // PIN incorrecto: después de 8 intentos se bloquea 15 minutos
@@ -103,6 +106,16 @@ function limpio_(v, max) {
   return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().replace(/^[=+\-@]+/, '').slice(0, max || 120);
 }
 
+/** '25-26', '2025-26', '25/26' -> '25-26'. Vacía -> TEMPORADA_ACTUAL. */
+function temporada_(v) {
+  const s = String(v == null ? '' : v).replace(/\s+/g, '').replace(/[\/–]/g, '-');
+  const m = s.match(/^(?:20)?(\d{2})-(?:20)?(\d{2})$/);
+  return m ? m[1] + '-' + m[2] : (s || TEMPORADA_ACTUAL);
+}
+
+/** Clave de un renglón: ID + liga + posición + temporada (el mismo jugador puede estar en dos temporadas). */
+function claveT_(id, liga, pos, temp) { return clave_(id, liga, pos) + '|' + temporada_(temp); }
+
 function clave_(id, liga, pos) {
   const n = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   return [n(id), n(liga), n(pos)].join('|');
@@ -114,7 +127,7 @@ function leerFilas_(v) {
   return sh.getRange(2, 1, sh.getLastRow() - 1, ENCABEZADOS.length).getDisplayValues()
     .filter((r) => r[0])
     .map((r) => ({ id: r[0], liga: r[1], posicion: r[2], nombre: r[3], comp1: r[4], comp2: r[5], fecha: r[6],
-      ligac1: r[7], ligac2: r[8] }));
+      ligac1: r[7], ligac2: r[8], temporada: temporada_(r[9]) }));
 }
 
 function agregar_(d) {
@@ -122,6 +135,7 @@ function agregar_(d) {
   const f = {
     id: limpio_(d.id), liga: limpio_(d.liga), posicion: limpio_(d.posicion), nombre: limpio_(d.nombre),
     comp1: limpio_(d.comp1), comp2: limpio_(d.comp2), ligac1: limpio_(d.ligac1), ligac2: limpio_(d.comp2 ? d.ligac2 : ''),
+    temporada: temporada_(limpio_(d.temporada, 10)),
   };
   if (!f.id || !f.liga || !f.posicion || !f.nombre || !f.comp1) throw new Error('Faltan campos obligatorios.');
   const lock = LockService.getScriptLock();
@@ -129,13 +143,13 @@ function agregar_(d) {
   try {
     const sh = hoja_(sec);
     const fila = [f.id, f.liga, f.posicion, f.nombre, f.comp1, f.comp2,
-      Utilities.formatDate(new Date(), 'America/Mexico_City', 'dd/MM/yyyy HH:mm'), f.ligac1, f.ligac2];
-    const k = clave_(f.id, f.liga, f.posicion);
-    const datos = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues() : [];
-    const claves = datos.map((r) => clave_(r[0], r[1], r[2]));
+      Utilities.formatDate(new Date(), 'America/Mexico_City', 'dd/MM/yyyy HH:mm'), f.ligac1, f.ligac2, f.temporada];
+    const k = claveT_(f.id, f.liga, f.posicion, f.temporada);
+    const datos = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ENCABEZADOS.length).getDisplayValues() : [];
+    const claves = datos.map((r) => claveT_(r[0], r[1], r[2], r[9]));
     // Editar: se reemplaza el renglón ORIGINAL aunque se corrija el ID, la liga o la posición
     const o = d.original || null;
-    let i = o ? claves.indexOf(clave_(o.id, o.liga, o.posicion)) : -1;
+    let i = o ? claves.indexOf(claveT_(o.id, o.liga, o.posicion, o.temporada || f.temporada)) : -1;
     if (i < 0) i = claves.indexOf(k);
     const rango = i >= 0 ? sh.getRange(i + 2, 1, 1, fila.length) : sh.getRange(sh.getLastRow() + 1, 1, 1, fila.length);
     rango.clearDataValidations();
@@ -157,10 +171,10 @@ function quitar_(d) {
   lock.waitLock(15000);
   try {
     const sh = hoja_(sec);
-    const k = clave_(d.id, d.liga, d.posicion);
-    const datos = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues() : [];
+    const k = claveT_(d.id, d.liga, d.posicion, d.temporada);
+    const datos = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ENCABEZADOS.length).getDisplayValues() : [];
     for (let i = datos.length - 1; i >= 0; i--) {
-      if (clave_(datos[i][0], datos[i][1], datos[i][2]) === k) sh.deleteRow(i + 2);
+      if (claveT_(datos[i][0], datos[i][1], datos[i][2], datos[i][9]) === k) sh.deleteRow(i + 2);
     }
     marcarPendiente_(true, sec);
     return { ok: true, filas: leerFilas_(sec) };

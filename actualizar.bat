@@ -33,6 +33,8 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+echo == 2a/3 Generando temporadas anteriores de Varonil (/25-26/, /24-25/) ==
+python build.py --temporadas
 echo == 2b/3 Generando Femenil (/femenil/) ==
 python build.py --femenil
 if errorlevel 1 echo [AVISO] No se genero Femenil; se publica lo demas.
