@@ -56,7 +56,17 @@ VERSION = "radares-3"          # súbelo si cambias cálculos o estilo: fuerza a
 CREDITO = 'Elaborado por Inteligencia Deportiva "Pumas"'
 # Factor de nivel de liga (solo radares contra Liga MX). La clave se busca dentro del nombre de la hoja
 # (sin acentos ni mayúsculas): "u21" vale para "Liga MX U21" y "Liga MX U21 - 2526". Las demás ligas = 1.
-FACTOR_LIGA = {"u21": 0.5, "expansion": 0.4, "Primera División - Chile": 0.7}
+FACTOR_LIGA = {
+    "u21": 0.5,                      # no está en Opta: va primero para que no tome el de Liga MX
+    "expansion": 0.7, "CSL - China": 0.8,
+    "Liga BetPlay - Colombia": 0.9, "Liga Pro - Ecuador": 0.9, "Super League - Suiza": 0.9,
+    "Segunda División - España": 0.9, "Chance Liga - Chequia": 0.9, "SSL - Grecia": 0.9,
+    "Primera División - Chile": 0.9, "División Profesional - Paraguay": 0.9, "NB I - Hungría": 0.9,
+    "Primera División - Uruguay": 0.9, "Primera División - Peru": 0.9, "Serie B - Italia": 0.9,
+    "Pro league - Arabia Saudi": 0.9, "Premiership - Escocia": 0.9, "Ligue 2 - France": 0.9,
+    "Ligat haAl - Israel": 0.9, "Premyer Liqa - Azerbaiyán": 0.9, "First League - Bulgaria": 0.9,
+    "Serie B - Brasil": 0.9,
+}
 
 # Leyenda del radar individual (azul, amarillo, rojo) por posición. Las que no estén aquí usan "_default".
 LEYENDAS = {
