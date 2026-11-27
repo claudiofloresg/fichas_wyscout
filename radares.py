@@ -51,7 +51,7 @@ def disponible():
     return None
 
 
-VERSION = "radares-3"          # súbelo si cambias cálculos o estilo: fuerza a regenerar todos
+VERSION = "radares-4"          # súbelo si cambias cálculos o estilo: fuerza a regenerar todos
 
 CREDITO = 'Elaborado por Inteligencia Deportiva "Pumas"'
 # Factor de nivel de liga (solo radares contra Liga MX). La clave se busca dentro del nombre de la hoja
@@ -263,7 +263,8 @@ METRICAS_POR_POSICION = {'Portero': [
 
 def configurar(cfg):
     """Permite sobreescribir constantes desde config.py (RADAR_MIN_MINUTOS, RADAR_CREDITO, ...)."""
-    global MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, CREDITO, DPI, FACTOR_LIGA
+    global MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, CREDITO, DPI, FACTOR_LIGA, ENCOGER_COMPARADOS
+    ENCOGER_COMPARADOS = bool(cfg("RADAR_ENCOGER_COMPARADOS", ENCOGER_COMPARADOS))
     LEYENDAS.update(cfg("RADAR_LEYENDAS", {}) or {})
     FACTOR_LIGA = dict(cfg("FACTOR_LIGA", FACTOR_LIGA) or {})
     MIN_MINUTOS_TOTALES = cfg("RADAR_MIN_MINUTOS", MIN_MINUTOS_TOTALES)
@@ -420,6 +421,81 @@ def _ajustar(df, metricas, f):
     return df
 
 
+# ============================================================================= encogimiento (Bayes empírico)
+# Jugadores de un radar de COMPARACIÓN que no pasan el filtro de minutos (p. ej. un jugador de Pumas con pocos
+# minutos): cada métrica se "encoge" hacia el promedio de su posición en su liga, según sus minutos:
+#     valor = (n·x + k·μ) / (n + k)
+#   n = minutos del jugador, x = su dato, μ = promedio de la muestra de su posición (la del filtro de minutos),
+#   k = minutos de "confianza" de ESA métrica = ruido / varianza real entre jugadores (Bayes empírico):
+#     - ruido de un dato por 90 con n minutos (conteo tipo Poisson): c / n, con c = 90·μ
+#       (Prevented goals: c = 90·promedio de xG against per 90; Save rate %: binomial, c = 90·μ(100−μ)/tiros por 90)
+#     - varianza real entre jugadores: varianza observada − ruido promedio (jugadores con ≥ MIN_MINUTOS_ENCOGER)
+#     - k = c / varianza real. Métrica muy "ruidosa" -> k grande (se acerca más al promedio); estable -> k chica.
+#   Con ≥ los minutos del filtro no se toca nada. Métricas que son totales (Clean sheets) no se tocan.
+# La tabla de estadísticas de la ficha NUNCA se toca: solo el dibujo del radar de comparación.
+ENCOGER_COMPARADOS = True
+MIN_MINUTOS_ENCOGER = 270
+K_MAX = 3000
+
+
+def _num(df, m):
+    return pd.to_numeric(df[m], errors="coerce") if m in df.columns else pd.Series(np.nan, index=df.index)
+
+
+def _k_encogimiento(todos, m):
+    """k (minutos) de la métrica m con todos los jugadores de esa posición y liga. None = no se encoge."""
+    mm = m.lower()
+    if not ("per 90" in mm or mm.startswith("padj") or mm.endswith(", %")):
+        return None                                      # totales (Clean sheets…)
+    n = _num(todos, "Minutes played")
+    ok = n >= MIN_MINUTOS_ENCOGER
+    x, n = _num(todos, m)[ok], n[ok]
+    ok = x.notna() & n.notna()
+    if ok.sum() < 10:
+        return None
+    x, n = x[ok].to_numpy(float), n[ok].to_numpy(float)
+    mu = float(np.average(x, weights=n))
+    if mm.startswith("prevented goals"):
+        c = 90 * float(_num(todos, "xG against per 90").mean())
+    elif mm.endswith(", %"):
+        tiros = float(_num(todos, "Shots against per 90").mean()) if "save" in mm else np.nan
+        if not tiros or np.isnan(tiros):
+            return None                                  # % sin intentos conocidos: no se encoge
+        c = 90 * mu * (100 - mu) / tiros
+    else:
+        c = 90 * mu
+    if not c or np.isnan(c) or c <= 0:
+        return None
+    var_real = float(np.var(x, ddof=1)) - float(np.mean(c / n))
+    if var_real <= 0:
+        return float(K_MAX)
+    return float(min(c / var_real, K_MAX))
+
+
+def encoger(base, fila, liga, pos_radar, metricas):
+    """(fila, nota). Si el jugador pasa el filtro de minutos, la fila tal cual y nota None."""
+    if not ENCOGER_COMPARADOS or fila is None or not filtro_minutos(fila.to_frame().T).empty:
+        return fila, None
+    n = _valor(fila, "Minutes played")
+    n = 0.0 if np.isnan(n) else max(n, 0.0)
+    todos = preparar_posiciones(base.hojas[liga])
+    todos = todos[todos["Posiciones_mapeadas"] == pos_radar]
+    pob = base.poblacion(liga, pos_radar)
+    fila = fila.copy()
+    for m in metricas:
+        x = _valor(fila, m)
+        if np.isnan(x) or m not in pob.columns:
+            continue
+        mu = pd.to_numeric(pob[m], errors="coerce").mean()
+        k = _k_encogimiento(todos, m)
+        if k is None or pd.isna(mu):
+            continue
+        fila[m] = x if n + k == 0 else (n * x + k * mu) / (n + k)
+    nota = (f"{fila['Player']}: {n:.0f} min (< {MIN_MINUTOS_TOTALES}): datos ajustados hacia el promedio "
+            f"de su posición en {liga} según sus minutos")
+    return fila, nota
+
+
 def _nota_ajuste(*ligas):
     if len({factor_liga(l) for l in ligas}) <= 1:      # mismo factor en ambas (p. ej. U21 vs U21): no cambia nada
         return None
@@ -541,6 +617,8 @@ def radar_comparativo(base, fila1, liga1, fila2, liga2, pos_radar, ruta):
     nombres = [NOMBRES_DISPLAY.get(m, m) for m in metricas]
     # cada liga con su factor (la muestra completa y el jugador, para que el promedio también se ajuste)
     f1, f2 = factor_liga(liga1), factor_liga(liga2)
+    fila1, n1 = encoger(base, fila1, liga1, pos_radar, metricas)     # pocos minutos -> hacia el promedio
+    fila2, n2 = encoger(base, fila2, liga2, pos_radar, metricas)
     glob = pd.concat([_ajustar(_con_jugador(base.poblacion(liga1, pos_radar), fila1), metricas, f1),
                       _ajustar(_con_jugador(base.poblacion(liga2, pos_radar), fila2), metricas, f2)], ignore_index=True)
     fila1 = _ajustar(fila1.to_frame().T, metricas, f1).iloc[0]
@@ -559,7 +637,8 @@ def radar_comparativo(base, fila1, liga1, fila2, liga2, pos_radar, ruta):
 
     fig = _pizza_comparativa(nombres, escala(fila1), escala(fila2),
                              f"<{fila1['Player']}> vs <{fila2['Player']}>",
-                             f"{liga1} vs {liga2} | {pos_radar}", nota=_nota_ajuste(liga1, liga2))
+                             f"{liga1} vs {liga2} | {pos_radar}",
+                             nota="\n".join(x for x in (n1, n2, _nota_ajuste(liga1, liga2)) if x) or None)
     _guardar(fig, ruta)
 
 
@@ -598,7 +677,7 @@ def generar(base, ficha, carpeta, prefijo, cache, procesar=None):
     if error:
         return [], [f"no se pueden dibujar radares: {error}"]
     clave = hashlib.sha1(json.dumps([
-        ficha.get("clave_extra"), VERSION, FACTOR_LIGA, list(SIN_AJUSTE), CREDITO, MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, DPI, METRICAS_POR_POSICION[pos_radar],
+        ficha.get("clave_extra"), VERSION, ENCOGER_COMPARADOS, MIN_MINUTOS_ENCOGER, K_MAX, FACTOR_LIGA, list(SIN_AJUSTE), CREDITO, MIN_MINUTOS_TOTALES, MIN_MINUTOS_PROMEDIO, DPI, METRICAS_POR_POSICION[pos_radar],
         ficha["id"], liga, liga_ref, pos_radar, [(str(r["Player"]), str(r["Team"]), lc) for r, lc in rivales],
         base.huella(liga), base.huella(liga_ref), [base.huella(lc) for _, lc in rivales],
     ], default=str).encode()).hexdigest()
